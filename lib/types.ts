@@ -49,6 +49,107 @@ export const TOUCH_LABEL: Record<Touch, string> = {
   SMS: "SMS",
 }
 
+export const PRODUCTS = [
+  "CURRENT",
+  "SAVINGS",
+  "FIXED_DEPOSIT",
+  "DOMICILIARY",
+  "POS",
+  "LOAN",
+  "PAYROLL",
+  "TRADE",
+  "DIGITAL",
+] as const
+export type Product = (typeof PRODUCTS)[number]
+
+export const PRODUCT_LABEL: Record<Product, string> = {
+  CURRENT: "Current account",
+  SAVINGS: "Savings",
+  FIXED_DEPOSIT: "Fixed deposit",
+  DOMICILIARY: "Domiciliary (FX)",
+  POS: "POS terminal",
+  LOAN: "Loan / overdraft",
+  PAYROLL: "Payroll",
+  TRADE: "Trade services",
+  DIGITAL: "Internet & mobile banking",
+}
+
+export const SOURCES = [
+  "REFERRAL",
+  "EXISTING_CUSTOMER",
+  "PERSONAL_NETWORK",
+  "WALK_IN",
+  "EVENT",
+  "COLD_OUTREACH",
+  "SOCIAL_MEDIA",
+  "OTHER",
+] as const
+export type Source = (typeof SOURCES)[number]
+
+export const SOURCE_LABEL: Record<Source, string> = {
+  REFERRAL: "Referral",
+  EXISTING_CUSTOMER: "Existing customer",
+  PERSONAL_NETWORK: "Personal network",
+  WALK_IN: "Walk-in",
+  EVENT: "Event",
+  COLD_OUTREACH: "Cold outreach",
+  SOCIAL_MEDIA: "Social media",
+  OTHER: "Other",
+}
+
+export const OUTCOMES = [
+  "INTERESTED",
+  "CALL_BACK",
+  "NOT_NOW",
+  "NO_ANSWER",
+  "WRONG_NUMBER",
+  "NOT_INTERESTED",
+] as const
+export type Outcome = (typeof OUTCOMES)[number]
+
+export const OUTCOME_LABEL: Record<Outcome, string> = {
+  INTERESTED: "Interested",
+  CALL_BACK: "Call back later",
+  NOT_NOW: "Not right now",
+  NO_ANSWER: "No answer",
+  WRONG_NUMBER: "Wrong number",
+  NOT_INTERESTED: "Not interested",
+}
+
+export const CONSENT_METHODS = [
+  "VERBAL",
+  "WRITTEN",
+  "WHATSAPP",
+  "EMAIL",
+  "FORM",
+] as const
+export type ConsentMethod = (typeof CONSENT_METHODS)[number]
+
+export const CONSENT_LABEL: Record<ConsentMethod, string> = {
+  VERBAL: "Said yes in person or on a call",
+  WRITTEN: "Signed or written",
+  WHATSAPP: "Agreed on WhatsApp",
+  EMAIL: "Agreed by email",
+  FORM: "Account opening form",
+}
+
+export const LOST_REASONS = [
+  "Happy with current bank",
+  "Rates or charges",
+  "Not ready yet",
+  "Couldn’t reach them",
+  "Went with another bank",
+  "Documentation issues",
+]
+
+export const WON_REASONS = [
+  "Better rates",
+  "Relationship with me",
+  "Referral from a customer",
+  "Product fit",
+  "Service speed",
+]
+
 export interface Prospect {
   id: string
   name: string
@@ -64,6 +165,24 @@ export interface Prospect {
   nextDate: string | null
   notes: string | null
   lastContactAt: string | null
+  stageChangedAt: string
+  outcomeReason: string | null
+  source: Source | null
+  wantsProducts: Product[]
+  holdsProducts: Product[]
+  referredById: string | null
+  /** "MM-DD" */
+  birthday: string | null
+  area: string | null
+  address: string | null
+  latitude: number | null
+  longitude: number | null
+  consentAt: string | null
+  consentMethod: ConsentMethod | null
+  consentNote: string | null
+  cadenceId: string | null
+  cadenceStep: number | null
+  cadenceStart: string | null
   createdAt: string
   updatedAt: string
 }
@@ -71,18 +190,40 @@ export interface Prospect {
 export interface Activity {
   id: string
   type: Touch | "STAGE_CHANGE"
+  outcome: Outcome | null
   note: string | null
   fromStage: Stage | null
   toStage: Stage | null
   occurredAt: string
 }
 
+export interface ProspectRef {
+  id: string
+  name: string
+  stage?: Stage
+}
+
 export interface ProspectDetail extends Prospect {
   activities: Activity[]
+  referredBy: ProspectRef | null
+  referrals: ProspectRef[]
+  sameCompany: ProspectRef[]
+  cadence: Pick<Cadence, "id" | "name" | "steps"> | null
+  balances: { month: string; amount: number }[]
 }
 
 export type ProspectInput = Partial<
-  Omit<Prospect, "id" | "lastContactAt" | "createdAt" | "updatedAt">
+  Omit<
+    Prospect,
+    | "id"
+    | "lastContactAt"
+    | "createdAt"
+    | "updatedAt"
+    | "stageChangedAt"
+    | "consentAt"
+    | "cadenceStep"
+    | "cadenceStart"
+  >
 >
 
 export interface Me {
@@ -90,10 +231,24 @@ export interface Me {
   name: string
   email: string
   role: string
+  phone: string | null
+  jobTitle: string | null
+  branch: string | null
+  avatarUrl: string | null
+  createdAt: string
   timezone: string
   targetAmount: number
   targetStartDate: string
+  targetEndDate: string | null
   dailyGoal: number
+  digestEmail: boolean
+  digestPush: boolean
+  digestHour: number
+  managerEmail: string | null
+  weeklyReport: boolean
+  twoFactorEnabled: boolean
+  teamId: string | null
+  teamRole: "MANAGER" | "MEMBER" | null
 }
 
 export interface GoalData {
@@ -106,11 +261,56 @@ export interface TodayData {
   today: string
   touchesToday: number
   goal: GoalData
+  pace: {
+    current: number
+    target: number
+    projected: number
+    onPace: boolean
+    endMonth: string
+  }
+  /** Overdue and due today, most valuable first. */
+  focus: (Prospect & { score: number })[]
   overdue: Prospect[]
   dueToday: Prospect[]
   noNextStep: Prospect[]
   upcoming: Prospect[]
   unrated: Prospect[]
+  stale: (Prospect & { daysInStage: number; staleAfter: number })[]
+  staleCount: number
+  birthdays: (Prospect & { inDays: number })[]
+}
+
+export interface StageForecast {
+  stage: Stage
+  count: number
+  potential: number
+  probability: number
+  weighted: number
+  missingPotential: number
+}
+
+export interface TargetData {
+  today: string
+  target: number
+  startMonth: string
+  endMonth: string
+  currentMonth: string
+  series: { month: string; total: number }[]
+  current: number
+  average: number
+  perMonth: number
+  projected: number
+  monthsLeft: number
+  onPace: boolean
+  gap: number
+  neededPerMonth: number
+  forecast: {
+    byStage: StageForecast[]
+    weighted: number
+    potential: number
+    expected: number
+    coverage: number
+  }
 }
 
 export interface ProgressData {
@@ -125,11 +325,167 @@ export interface ProgressData {
   weeks: { weekStart: string; touches: number; accountsOpened: number }[]
   byStage: { stage: Stage; count: number }[]
   byTier: { tier: Tier | null; count: number; potential: number }[]
+  targetStatus: TargetData
+  bySource: {
+    source: Source | null
+    count: number
+    won: number
+    lost: number
+    winRate: number | null
+    balance: number
+  }[]
+  lostReasons: { reason: string; count: number }[]
+  wonReasons: { reason: string; count: number }[]
+  avgDaysToOpen: number | null
+  products: { product: Product; wanted: number; held: number }[]
 }
 
 export interface ProspectsMeta {
   groups: string[]
+  areas: string[]
   stageCounts: Record<Stage, number>
+  channels: { email: boolean; sms: boolean }
+}
+
+export interface CadenceStep {
+  day: number
+  type: Touch
+  action: string
+}
+
+export interface Cadence {
+  id: string
+  name: string
+  steps: CadenceStep[]
+  prospectCount: number
+}
+
+export interface BalanceRow {
+  id: string
+  name: string
+  company: string | null
+  tier: Tier | null
+  stage: Stage
+  amount: number | null
+  previous: { month: string; amount: number } | null
+}
+
+export interface BalanceSheet {
+  month: string
+  rows: BalanceRow[]
+}
+
+export interface SessionInfo {
+  id: string
+  userAgent: string | null
+  ip: string | null
+  createdAt: string
+  lastUsedAt: string
+  current: boolean
+}
+
+export interface SecurityData {
+  twoFactorEnabled: boolean
+  backupCodesLeft: number
+  sessions: SessionInfo[]
+}
+
+export interface AuditEntry {
+  id: string
+  action: string
+  label: string
+  detail: string | null
+  ip: string | null
+  userAgent: string | null
+  createdAt: string
+}
+
+export interface TeamMember {
+  id: string
+  name: string
+  jobTitle: string | null
+  branch: string | null
+  avatarUrl: string | null
+  role: "MANAGER" | "MEMBER"
+  isMe: boolean
+  balance: number
+  target: number
+  progress: number
+  projected: number
+  onPace: boolean
+  weightedPipeline: number
+  contactsThisWeek: number
+  accountsOpened30d: number
+}
+
+export interface Team {
+  id: string
+  name: string
+  role: "MANAGER" | "MEMBER"
+  inviteCode: string | null
+  totals: {
+    balance: number
+    target: number
+    contactsThisWeek: number
+    weightedPipeline: number
+  }
+  members: TeamMember[]
+}
+
+export interface WeeklyReport {
+  user: {
+    name: string
+    email: string
+    jobTitle: string | null
+    branch: string | null
+  }
+  weekStart: string
+  contacts: number
+  accountsOpened: number
+  balance: number
+  target: number
+  projected: number
+  onPace: boolean
+  endMonth: string
+  weightedPipeline: number
+  stages: { stage: Stage; count: number }[]
+  opportunities: {
+    name: string
+    company: string | null
+    stage: Stage
+    potential: number
+  }[]
+}
+
+export interface Brief {
+  summary: string
+  promised: string[]
+  pitch: string[]
+  questions: string[]
+  watchOut: string[]
+}
+
+export interface Draft {
+  /** Empty for WhatsApp and SMS. */
+  subject: string
+  body: string
+}
+
+export interface TidiedNote {
+  note: string
+  outcome: Outcome | null
+  nextAction: string | null
+  nextInDays: number | null
+}
+
+/** Fields the card didn't show come back empty. */
+export interface CardScan {
+  name: string
+  company: string
+  jobTitle: string
+  phone: string
+  email: string
+  address: string
 }
 
 export interface Template {

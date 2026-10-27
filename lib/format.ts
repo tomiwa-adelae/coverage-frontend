@@ -44,17 +44,14 @@ export function relativeDay(ymd: string, today: string) {
   return niceDate(ymd)
 }
 
-export function naira(n: number | null | undefined) {
-  return "₦" + Math.round(n ?? 0).toLocaleString("en-NG")
+/** 180000000 -> "180,000,000" */
+export function formatNumber(n: number | null | undefined) {
+  return Math.round(n ?? 0).toLocaleString("en-NG")
 }
 
-export function nairaShort(n: number | null | undefined) {
-  const v = n ?? 0
-  const trim = (x: number, d: number) => x.toFixed(d).replace(/\.?0+$/, "")
-  if (v >= 1e9) return `₦${trim(v / 1e9, 2)}bn`
-  if (v >= 1e6) return `₦${trim(v / 1e6, 1)}m`
-  if (v >= 1e3) return `₦${Math.round(v / 1e3)}k`
-  return `₦${v}`
+/** 180000000 -> "₦180,000,000". Money is always whole naira. */
+export function naira(n: number | null | undefined) {
+  return "₦" + formatNumber(n)
 }
 
 /** "just now", "3h ago", "2d ago", "5w ago" for an ISO timestamp. */
@@ -85,4 +82,24 @@ export function initials(name: string) {
 export function parseMoney(s: string): number | null {
   const digits = s.replace(/[^\d]/g, "")
   return digits ? Number(digits) : null
+}
+
+/** 12500000 -> "₦12.5m", 850000 -> "₦850k". For tight spaces; use naira() elsewhere. */
+export function nairaShort(n: number | null | undefined) {
+  const v = Math.round(n ?? 0)
+  const abs = Math.abs(v)
+  const fmt = (x: number) =>
+    x.toLocaleString("en-NG", { maximumFractionDigits: x < 10 ? 1 : 0 })
+  if (abs >= 1e9) return `₦${fmt(v / 1e9)}bn`
+  if (abs >= 1e6) return `₦${fmt(v / 1e6)}m`
+  if (abs >= 1e3) return `₦${fmt(v / 1e3)}k`
+  return `₦${v}`
+}
+
+/** "2026-10" -> "Oct 2026" (or "October 2026" with long). */
+export function monthName(ym: string, long = false) {
+  return new Date(`${ym}-01T12:00:00`).toLocaleDateString("en-GB", {
+    month: long ? "long" : "short",
+    year: "numeric",
+  })
 }

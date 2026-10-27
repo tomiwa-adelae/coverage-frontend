@@ -17,32 +17,36 @@ export function ProspectAvatar({
 }: {
   name: string
   tier: Tier | null
-  size?: "md" | "lg"
+  size?: "sm" | "md" | "lg"
   className?: string
 }) {
   return (
     <span
       className={cn(
         "relative grid shrink-0 place-items-center rounded-full font-semibold ring-1",
-        size === "md" ? "size-10 text-sm" : "size-14 text-lg",
+        size === "sm" && "size-7 text-[11px]",
+        size === "md" && "size-10 text-sm",
+        size === "lg" && "size-14 text-lg",
         tier ? TIER_STYLE[tier] : "bg-muted text-muted-foreground ring-border",
         className
       )}
       aria-hidden
     >
       {initials(name)}
-      <span
-        className={cn(
-          "absolute -right-0.5 -bottom-0.5 grid place-items-center rounded-full border-2 border-card font-bold",
-          size === "md" ? "size-[18px] text-[9px]" : "size-6 text-[11px]",
-          tier === "A" && "bg-tier-a text-white",
-          tier === "B" && "bg-tier-b text-white",
-          tier === "C" && "bg-tier-c text-white",
-          !tier && "bg-muted text-muted-foreground"
-        )}
-      >
-        {tier ?? "?"}
-      </span>
+      {size !== "sm" && (
+        <span
+          className={cn(
+            "absolute -right-0.5 -bottom-0.5 grid place-items-center rounded-full border-2 border-card font-bold",
+            size === "md" ? "size-[18px] text-[9px]" : "size-6 text-[11px]",
+            tier === "A" && "bg-tier-a text-white",
+            tier === "B" && "bg-tier-b text-white",
+            tier === "C" && "bg-tier-c text-white",
+            !tier && "bg-muted text-muted-foreground"
+          )}
+        >
+          {tier ?? "?"}
+        </span>
+      )}
     </span>
   )
 }

@@ -9,6 +9,7 @@
   --color-tier-b: var(--tier-b);
   --color-tier-c: var(--tier-c);
   --color-warning: var(--warning);
+  --color-success: var(--success);
   --color-brand: var(--brand);
   --color-brand-foreground: var(--brand-foreground);
   --font-heading: var(--font-sans);
@@ -79,6 +80,7 @@
   --tier-b: oklch(0.55 0.13 250);
   --tier-c: oklch(0.58 0.02 233);
   --warning: oklch(0.7 0.16 55);
+  --success: oklch(0.55 0.14 155);
   --chart-1: oklch(0.374 0.031 232.8);
   --chart-2: oklch(0.825 0.168 80.8);
   --chart-3: oklch(0.55 0.13 250);
@@ -119,6 +121,7 @@
   --tier-b: oklch(0.72 0.12 250);
   --tier-c: oklch(0.72 0.02 233);
   --warning: oklch(0.78 0.15 60);
+  --success: oklch(0.72 0.15 155);
   --chart-1: oklch(0.825 0.168 80.8);
   --chart-2: oklch(0.72 0.12 250);
   --chart-3: oklch(0.7 0.03 233);

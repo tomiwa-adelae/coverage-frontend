@@ -11,13 +11,7 @@ import {
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { telUrl, whatsappUrl } from "@/lib/contact"
-import {
-  addDays,
-  nairaShort,
-  niceDate,
-  relativeDay,
-  timeAgo,
-} from "@/lib/format"
+import { addDays, naira, niceDate, relativeDay, timeAgo } from "@/lib/format"
 import { usePatchProspect } from "@/lib/queries"
 import { STAGE_LABEL, type Prospect } from "@/lib/types"
 import { Button } from "@/components/ui/button"
@@ -34,6 +28,7 @@ import { ProspectAvatar } from "@/components/prospect-avatar"
 import { useOpenProspect } from "@/components/prospect-sheet"
 import { useQuickLogDialog } from "@/components/quick-log"
 import { useMessageDialog } from "@/components/message-dialog"
+import { useTrackCall } from "@/components/call-tracker"
 
 export function DueChip({
   date,
@@ -68,17 +63,20 @@ const SNOOZE: [string, number][] = [
   ["In 2 weeks", 14],
 ]
 
-export function ProspectList({
+export function ProspectList<P extends Prospect>({
   items,
   today,
   trailing = "date",
   actions = false,
+  subtitle,
 }: {
-  items: Prospect[]
+  items: P[]
   today: string
   trailing?: "date" | "stage"
   /** Show Call / WhatsApp / Done / Snooze on each row. */
   actions?: boolean
+  /** Replaces the default "next action · last contact" line. */
+  subtitle?: (p: P) => string
 }) {
   return (
     <ul className="divide-y overflow-hidden rounded-xl border bg-card shadow-xs">
@@ -89,6 +87,7 @@ export function ProspectList({
           today={today}
           trailing={trailing}
           actions={actions}
+          subtitle={subtitle?.(p)}
         />
       ))}
     </ul>
@@ -100,16 +99,19 @@ function ProspectRow({
   today,
   trailing,
   actions,
+  subtitle,
 }: {
   p: Prospect
   today: string
   trailing: "date" | "stage"
   actions: boolean
+  subtitle?: string
 }) {
   const open = useOpenProspect()
   const quickLog = useQuickLogDialog()
   const message = useMessageDialog()
   const patch = usePatchProspect()
+  const trackCall = useTrackCall()
 
   async function snooze(days: number) {
     const nextDate = addDays(today, days)
@@ -142,7 +144,7 @@ function ProspectRow({
           )}
         </div>
         <p className="truncate text-sm text-muted-foreground">
-          {meta.join(" · ") || "—"}
+          {subtitle ?? (meta.join(" · ") || "—")}
         </p>
       </div>
 
@@ -156,7 +158,7 @@ function ProspectRow({
         )}
         {p.potential ? (
           <span className="text-xs font-medium text-muted-foreground tabular-nums">
-            {nairaShort(p.potential)}
+            {naira(p.potential)}
           </span>
         ) : null}
       </div>
@@ -171,7 +173,9 @@ function ProspectRow({
                 className="hidden sm:inline-flex"
                 aria-label={`Call ${p.name}`}
                 nativeButton={false}
-                render={<a href={telUrl(p.phone)} />}
+                render={
+                  <a href={telUrl(p.phone)} onClick={() => trackCall(p)} />
+                }
               >
                 <IconPhone />
               </Button>
@@ -219,7 +223,14 @@ function ProspectRow({
               {p.phone && (
                 <>
                   <DropdownMenuGroup className="sm:hidden">
-                    <DropdownMenuItem render={<a href={telUrl(p.phone)} />}>
+                    <DropdownMenuItem
+                      render={
+                        <a
+                          href={telUrl(p.phone)}
+                          onClick={() => trackCall(p)}
+                        />
+                      }
+                    >
                       <IconPhone /> Call
                     </DropdownMenuItem>
                     <DropdownMenuItem

@@ -1,12 +1,30 @@
 "use client"
 
 import { createContext, useCallback, useContext, useState } from "react"
+import { useForm, useWatch } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { IconRoute, IconSparkles } from "@tabler/icons-react"
 import { toast } from "sonner"
-import { cn } from "@/lib/utils"
+import { z } from "zod"
 import { followUpDays } from "@/lib/contact"
 import { addDays, localToday, niceDate } from "@/lib/format"
-import { useQuickLog } from "@/lib/queries"
-import { TOUCHES, TOUCH_LABEL, type Prospect, type Touch } from "@/lib/types"
+import { planProgress } from "@/lib/plans"
+import {
+  useAiStatus,
+  useCadences,
+  useQuickLog,
+  useTidyNote,
+} from "@/lib/queries"
+import { showFormError } from "@/lib/forms"
+import {
+  OUTCOMES,
+  OUTCOME_LABEL,
+  TOUCHES,
+  TOUCH_LABEL,
+  type Outcome,
+  type Prospect,
+  type Touch,
+} from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -16,12 +34,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Field, FieldLabel } from "@/components/ui/field"
+import { FieldGroup } from "@/components/ui/field"
+import { FormField } from "@/components/form-field"
+import { Chip } from "@/components/prospect-fields"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { DictateButton, appendText, useDictation } from "@/components/dictate"
 
 export interface QuickLogPreset {
   type?: Touch
+  outcome?: Outcome
   note?: string
 }
 
@@ -67,6 +89,18 @@ const NEXT_OPTIONS: [string, number][] = [
   ["1 month", 30],
 ]
 
+/** Outcomes where nobody was reached: try again soon, keep the plan where it is. */
+const UNREACHED: Outcome[] = ["NO_ANSWER", "WRONG_NUMBER"]
+
+const quickLogSchema = z.object({
+  type: z.enum(TOUCHES),
+  outcome: z.enum(["", ...OUTCOMES]),
+  note: z.string().trim().max(1000, "Keep the note under 1,000 characters"),
+  nextDate: z.string().min(1, "Pick the next follow-up date"),
+  nextAction: z.string().trim().max(200, "Keep it under 200 characters"),
+})
+type QuickLogValues = z.infer<typeof quickLogSchema>
+
 function QuickLogForm({
   prospect,
   preset,
@@ -77,118 +111,245 @@ function QuickLogForm({
   onDone: () => void
 }) {
   const today = localToday()
-  const [type, setType] = useState<Touch>(preset.type ?? "CALL")
-  const [note, setNote] = useState(preset.note ?? "")
-  const [nextDate, setNextDate] = useState(
-    addDays(today, followUpDays(prospect.tier))
-  )
-  const [nextAction, setNextAction] = useState(prospect.nextAction ?? "")
   const log = useQuickLog()
+  const tidy = useTidyNote()
+  const { data: ai } = useAiStatus()
+  const { data: cadences } = useCadences()
+  const plan = planProgress(prospect, cadences, today)
 
-  async function submit(e?: React.FormEvent) {
-    e?.preventDefault()
-    await log.mutateAsync({
-      id: prospect.id,
-      type,
-      note: note || undefined,
-      nextDate,
-      nextAction,
-    })
-    toast.success(`Logged for ${prospect.name}`, {
-      description: `Next follow-up ${niceDate(nextDate)}`,
-    })
-    onDone()
+  /** What to schedule next, given how the contact went. */
+  const defaultsFor = (outcome: Outcome | "") =>
+    UNREACHED.includes(outcome as Outcome)
+      ? {
+          nextDate: addDays(today, 1),
+          nextAction: prospect.nextAction ?? "",
+        }
+      : plan?.next
+        ? { nextDate: plan.next.nextDate, nextAction: plan.next.nextAction }
+        : {
+            nextDate: addDays(today, followUpDays(prospect.tier)),
+            nextAction: prospect.nextAction ?? "",
+          }
+
+  const form = useForm<QuickLogValues>({
+    resolver: zodResolver(quickLogSchema),
+    defaultValues: {
+      type: preset.type ?? plan?.current?.type ?? "CALL",
+      outcome: preset.outcome ?? "",
+      note: preset.note ?? "",
+      ...defaultsFor(preset.outcome ?? ""),
+    },
+  })
+  const [nextDate, outcome, note] = useWatch({
+    control: form.control,
+    name: ["nextDate", "outcome", "note"],
+  })
+  const dictation = useDictation((text) =>
+    form.setValue("note", appendText(form.getValues("note"), text))
+  )
+
+  function pickOutcome(o: Outcome | "") {
+    form.setValue("outcome", o)
+    // Only move the dates while they're still the defaults the user hasn't touched.
+    if (!form.getFieldState("nextDate").isDirty) {
+      const d = defaultsFor(o)
+      form.setValue("nextDate", d.nextDate)
+      if (!form.getFieldState("nextAction").isDirty)
+        form.setValue("nextAction", d.nextAction)
+    }
   }
 
+  async function tidyNote() {
+    dictation.stop()
+    try {
+      const r = await tidy.mutateAsync({
+        text: form.getValues("note"),
+        prospectId: prospect.id,
+      })
+      form.setValue("note", r.note, { shouldDirty: true })
+      if (r.outcome && !form.getValues("outcome")) pickOutcome(r.outcome)
+      if (r.nextAction)
+        form.setValue("nextAction", r.nextAction, { shouldDirty: true })
+      if (r.nextInDays !== null && r.nextInDays >= 0)
+        form.setValue("nextDate", addDays(today, Math.max(1, r.nextInDays)), {
+          shouldDirty: true,
+        })
+    } catch (e) {
+      toast.error((e as Error).message)
+    }
+  }
+
+  async function submit(values: QuickLogValues) {
+    dictation.stop()
+    try {
+      await log.mutateAsync({
+        id: prospect.id,
+        ...values,
+        outcome: values.outcome || undefined,
+        note: values.note || undefined,
+      })
+      toast.success(`Logged for ${prospect.name}`, {
+        description: `Next follow-up ${niceDate(values.nextDate)}`,
+      })
+      onDone()
+    } catch (e) {
+      showFormError(form, e)
+    }
+  }
+
+  const unreached = UNREACHED.includes(outcome as Outcome)
+
   return (
-    <form onSubmit={submit} className="grid gap-5">
+    <form
+      noValidate
+      onSubmit={form.handleSubmit(submit)}
+      className="grid gap-5"
+    >
       <DialogHeader>
         <DialogTitle>Log contact</DialogTitle>
         <DialogDescription>{prospect.name}</DialogDescription>
       </DialogHeader>
 
-      <div className="grid gap-4">
-        <div
-          className="flex flex-wrap gap-1.5"
-          role="group"
-          aria-label="How you reached them"
-        >
-          {TOUCHES.map((t) => (
-            <Button
-              key={t}
-              type="button"
-              size="sm"
-              variant={type === t ? "default" : "outline"}
-              aria-pressed={type === t}
-              onClick={() => setType(t)}
+      <FieldGroup className="gap-5">
+        <FormField
+          control={form.control}
+          name="type"
+          label="How did you reach them?"
+          render={({ value, onChange }) => (
+            <div
+              className="flex flex-wrap gap-1.5"
+              role="radiogroup"
+              aria-label="How you reached them"
             >
-              {TOUCH_LABEL[t]}
-            </Button>
-          ))}
-        </div>
-
-        <Field>
-          <FieldLabel htmlFor="ql-note">What happened</FieldLabel>
-          <Textarea
-            id="ql-note"
-            rows={2}
-            autoFocus
-            placeholder="e.g. Interested, wants the forms on Friday"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit()
-            }}
-          />
-        </Field>
-
-        <Field>
-          <FieldLabel>Next follow-up</FieldLabel>
-          <div className="flex flex-wrap gap-1.5">
-            {NEXT_OPTIONS.map(([label, n]) => {
-              const d = addDays(today, n)
-              return (
-                <button
-                  key={n}
+              {TOUCHES.map((t) => (
+                <Button
+                  key={t}
                   type="button"
-                  onClick={() => setNextDate(d)}
-                  className={cn(
-                    "rounded-full border px-2.5 py-1 text-xs font-medium transition-colors hover:bg-muted",
-                    nextDate === d &&
-                      "border-primary bg-primary/10 text-primary"
-                  )}
+                  size="sm"
+                  role="radio"
+                  aria-checked={value === t}
+                  variant={value === t ? "default" : "outline"}
+                  onClick={() => onChange(t)}
                 >
-                  {label}
-                </button>
-              )
-            })}
-          </div>
-          <Input
-            type="date"
-            aria-label="Follow-up date"
-            value={nextDate}
-            min={today}
-            onChange={(e) => setNextDate(e.target.value)}
-          />
-        </Field>
+                  {TOUCH_LABEL[t]}
+                </Button>
+              ))}
+            </div>
+          )}
+        />
 
-        <Field>
-          <FieldLabel htmlFor="ql-action">Next action</FieldLabel>
-          <Input
-            id="ql-action"
-            placeholder="e.g. Send account opening package"
-            value={nextAction}
-            onChange={(e) => setNextAction(e.target.value)}
-          />
-        </Field>
-      </div>
+        <FormField
+          control={form.control}
+          name="outcome"
+          label="How did it go?"
+          description={
+            unreached
+              ? "Not counted as a contact. The plan stays on this step."
+              : undefined
+          }
+          render={({ value }) => (
+            <div className="flex flex-wrap gap-1.5">
+              {OUTCOMES.map((o) => (
+                <Chip
+                  key={o}
+                  active={value === o}
+                  onClick={() => pickOutcome(value === o ? "" : o)}
+                >
+                  {OUTCOME_LABEL[o]}
+                </Chip>
+              ))}
+            </div>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="note"
+          label="What happened"
+          render={(field) => (
+            <>
+              <Textarea
+                {...field}
+                rows={3}
+                autoFocus
+                placeholder="e.g. Interested, wants the forms on Friday"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey))
+                    form.handleSubmit(submit)()
+                }}
+              />
+              <div className="flex flex-wrap gap-1.5">
+                <DictateButton dictation={dictation} />
+                {ai?.enabled && note.trim().length > 15 && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={tidy.isPending}
+                    onClick={tidyNote}
+                  >
+                    <IconSparkles data-icon="inline-start" />
+                    {tidy.isPending ? "Tidying…" : "Tidy up & fill in"}
+                  </Button>
+                )}
+              </div>
+            </>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="nextDate"
+          label="Next follow-up"
+          render={(field) => (
+            <>
+              {plan?.next && !unreached && (
+                <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <IconRoute className="size-3.5" />
+                  {plan.plan.name}: step {plan.index + 2} of{" "}
+                  {plan.plan.steps.length}
+                </p>
+              )}
+              <div className="flex flex-wrap gap-1.5">
+                {NEXT_OPTIONS.map(([label, n]) => {
+                  const d = addDays(today, n)
+                  return (
+                    <Chip
+                      key={n}
+                      active={nextDate === d}
+                      onClick={() =>
+                        form.setValue("nextDate", d, {
+                          shouldValidate: true,
+                          shouldDirty: true,
+                        })
+                      }
+                    >
+                      {label}
+                    </Chip>
+                  )
+                })}
+              </div>
+              <Input {...field} type="date" min={today} />
+            </>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="nextAction"
+          label="Next action"
+          render={(field) => (
+            <Input {...field} placeholder="e.g. Send account opening package" />
+          )}
+        />
+      </FieldGroup>
 
       <DialogFooter>
         <Button type="button" variant="outline" onClick={onDone}>
           Cancel
         </Button>
-        <Button type="submit" disabled={log.isPending || !nextDate}>
-          {log.isPending ? "Saving…" : `Log & schedule`}
+        <Button type="submit" disabled={form.formState.isSubmitting}>
+          {form.formState.isSubmitting ? "Saving…" : "Log & schedule"}
         </Button>
       </DialogFooter>
     </form>

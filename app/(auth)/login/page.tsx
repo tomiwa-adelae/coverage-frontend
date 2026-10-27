@@ -1,8 +1,8 @@
 import type { Metadata } from "next"
-import { AuthForm } from "@/components/auth-form"
+import { LoginForm } from "@/components/auth/auth-forms"
 
 export const metadata: Metadata = { title: "Sign in" }
 
 export default function LoginPage() {
-  return <AuthForm mode="login" />
+  return <LoginForm />
 }

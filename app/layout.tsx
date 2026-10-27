@@ -39,7 +39,8 @@ export default function RootLayout({
         outfit.variable
       )}
     >
-      <body>
+      {/* Extensions (password managers, Grammarly) add attributes to body before hydration. */}
+      <body suppressHydrationWarning>
         <Providers>{children}</Providers>
       </body>
     </html>

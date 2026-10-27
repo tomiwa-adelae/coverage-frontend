@@ -2,9 +2,13 @@
 
 import { useState } from "react"
 import { toast } from "sonner"
-import { IconArrowsMove, IconCalendar } from "@tabler/icons-react"
+import {
+  IconArrowRight,
+  IconArrowsMove,
+  IconCalendar,
+} from "@tabler/icons-react"
 import { cn } from "@/lib/utils"
-import { localToday, nairaShort, relativeDay } from "@/lib/format"
+import { localToday, naira, relativeDay } from "@/lib/format"
 import { prospectsKey, useMoveStage, useProspects } from "@/lib/queries"
 import {
   STAGES,
@@ -26,6 +30,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Skeleton } from "@/components/ui/skeleton"
+import { useMediaQuery } from "@/hooks/use-media-query"
 
 const WON: Stage[] = ["ACCOUNT_OPENED", "FUNDED"]
 const DRAG_TYPE = "application/x-coverage-prospect"
@@ -47,14 +52,18 @@ export default function PipelinePage() {
   const open = useOpenProspect()
   const [dragging, setDragging] = useState<string | null>(null)
   const [over, setOver] = useState<Stage | null>(null)
+  const [tab, setTab] = useState<Stage | null>(null)
+  const desktop = useMediaQuery("(min-width: 768px)")
   const today = localToday()
 
-  function moveTo(p: Prospect, stage: Stage) {
+  function moveTo(p: Prospect, stage: Stage, undoable = true) {
     if (p.stage === stage) return
+    const from = p.stage
     move.mutate(
       { id: p.id, stage },
       {
         onSuccess: () => {
+          if (!undoable) return
           if (stage === "FUNDED" && !p.funded) {
             open(p.id)
             toast.success(`${p.name} funded`, {
@@ -62,7 +71,12 @@ export default function PipelinePage() {
                 "Add the funded amount so it counts toward your target.",
             })
           } else {
-            toast.success(`${p.name} → ${STAGE_LABEL[stage]}`)
+            toast.success(`${p.name} moved to ${STAGE_LABEL[stage]}`, {
+              action: {
+                label: "Undo",
+                onClick: () => moveTo({ ...p, stage }, from, false),
+              },
+            })
           }
         },
       }
@@ -88,12 +102,21 @@ export default function PipelinePage() {
         (b.potential ?? 0) - (a.potential ?? 0)
     )
 
+  const active =
+    tab ??
+    STAGES.find((s) => s !== "DECLINED" && byStage[s].length) ??
+    "IDENTIFIED"
+
   return (
     <>
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
         <PageHeader
           title="Pipeline"
-          description="Drag a card to move it to the next stage."
+          description={
+            desktop
+              ? "Drag a card to move it to the next stage."
+              : "Pick a stage, then tap a card’s arrow to move it forward."
+          }
         />
         <div
           className="flex gap-1 rounded-lg border bg-card p-1"
@@ -122,8 +145,18 @@ export default function PipelinePage() {
         <EmptyNote>
           Couldn&apos;t load the pipeline. Refresh to try again.
         </EmptyNote>
+      ) : !desktop ? (
+        <MobileBoard
+          byStage={byStage}
+          loaded={!!data}
+          active={active}
+          today={today}
+          onSelect={setTab}
+          onOpen={(p) => open(p.id)}
+          onMove={moveTo}
+        />
       ) : (
-        <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-4 lg:-mx-8 lg:px-8">
+        <div className="-mx-4 mt-2 flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-4 pb-4 lg:-mx-8 lg:scroll-px-8 lg:px-8">
           {STAGES.map((stage) => {
             const items = byStage[stage]
             const value = columnValue(stage, items)
@@ -171,7 +204,7 @@ export default function PipelinePage() {
                           : "text-muted-foreground"
                       )}
                     >
-                      {nairaShort(value)}
+                      {naira(value)}
                     </span>
                   )}
                 </header>
@@ -255,7 +288,7 @@ function Card({
         <ProspectAvatar
           name={p.name}
           tier={p.tier}
-          className="size-8 text-xs"
+          className="size-9 text-xs"
         />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium">{p.name}</p>
@@ -267,7 +300,7 @@ function Card({
           <div className="mt-1.5 flex items-center gap-2 text-[11px] text-muted-foreground">
             {money ? (
               <span className="font-semibold text-foreground tabular-nums">
-                {nairaShort(money)}
+                {naira(money)}
               </span>
             ) : null}
             {p.nextDate && (
@@ -284,30 +317,203 @@ function Card({
           </div>
         </div>
       </div>
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          render={
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              aria-label={`Move ${p.name}`}
-              className="absolute top-1.5 right-1.5 opacity-100 data-popup-open:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
-            />
-          }
-        >
-          <IconArrowsMove />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-44">
-          <DropdownMenuGroup>
-            <DropdownMenuLabel>Move to</DropdownMenuLabel>
-            {STAGES.filter((s) => s !== p.stage).map((s) => (
-              <DropdownMenuItem key={s} onClick={() => onMove(s)}>
-                {STAGE_LABEL[s]}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <MoveMenu
+        p={p}
+        onMove={onMove}
+        trigger={
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label={`Move ${p.name}`}
+            className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-popup-open:opacity-100"
+          >
+            <IconArrowsMove />
+          </Button>
+        }
+      />
     </li>
+  )
+}
+
+/** Next step in the funnel, for the one-tap "move forward" button. */
+function nextStage(stage: Stage): Stage | null {
+  const i = STAGES.indexOf(stage)
+  return stage === "FUNDED" || stage === "DECLINED" ? null : STAGES[i + 1]
+}
+
+function MoveMenu({
+  p,
+  onMove,
+  trigger,
+}: {
+  p: Prospect
+  onMove: (s: Stage) => void
+  trigger: React.ReactElement
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger render={trigger} />
+      <DropdownMenuContent align="end" className="w-48">
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>Move to</DropdownMenuLabel>
+          {STAGES.filter((s) => s !== p.stage).map((s) => (
+            <DropdownMenuItem key={s} onClick={() => onMove(s)}>
+              {STAGE_LABEL[s]}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+/** Phones: one stage at a time, picked from a scrollable tab strip. */
+function MobileBoard({
+  byStage,
+  loaded,
+  active,
+  today,
+  onSelect,
+  onOpen,
+  onMove,
+}: {
+  byStage: Record<Stage, Prospect[]>
+  loaded: boolean
+  active: Stage
+  today: string
+  onSelect: (s: Stage) => void
+  onOpen: (p: Prospect) => void
+  onMove: (p: Prospect, s: Stage) => void
+}) {
+  const items = byStage[active]
+  const value = columnValue(active, items)
+  return (
+    <>
+      <div
+        role="tablist"
+        aria-label="Stage"
+        className="-mx-4 mt-4 flex snap-x scroll-px-4 [scrollbar-width:none] gap-2 overflow-x-auto px-4 pb-1 [&::-webkit-scrollbar]:hidden"
+      >
+        {STAGES.map((s) => (
+          <button
+            key={s}
+            type="button"
+            role="tab"
+            aria-selected={s === active}
+            onClick={() => onSelect(s)}
+            className={cn(
+              "flex shrink-0 snap-start items-center gap-1.5 rounded-full border bg-card px-3 py-1.5 text-sm font-medium whitespace-nowrap transition-colors",
+              s === active &&
+                "border-primary bg-primary text-primary-foreground dark:border-brand dark:bg-brand dark:text-brand-foreground"
+            )}
+          >
+            {STAGE_LABEL[s]}
+            <span
+              className={cn(
+                "rounded-full bg-muted px-1.5 text-xs text-muted-foreground tabular-nums",
+                s === active && "bg-white/20 text-current"
+              )}
+            >
+              {loaded ? byStage[s].length : "–"}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-4 flex items-baseline justify-between gap-2">
+        <h2 className="font-semibold">{STAGE_LABEL[active]}</h2>
+        {value > 0 && (
+          <span
+            className={cn(
+              "text-sm font-semibold tabular-nums",
+              WON.includes(active) ? "text-tier-a" : "text-muted-foreground"
+            )}
+          >
+            {naira(value)}
+          </span>
+        )}
+      </div>
+
+      <ol className="mt-2 grid gap-2">
+        {!loaded ? (
+          <>
+            <Skeleton className="h-24" />
+            <Skeleton className="h-24" />
+            <Skeleton className="h-24" />
+          </>
+        ) : items.length === 0 ? (
+          <li className="rounded-xl border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
+            Nobody in {STAGE_LABEL[active].toLowerCase()} yet.
+          </li>
+        ) : (
+          items.map((p) => {
+            const next = nextStage(p.stage)
+            const late = p.nextDate && p.nextDate < today
+            const money =
+              WON.includes(p.stage) && p.funded ? p.funded : p.potential
+            return (
+              <li
+                key={p.id}
+                className="animate-in rounded-xl border bg-card shadow-xs fade-in"
+              >
+                <button
+                  type="button"
+                  onClick={() => onOpen(p)}
+                  className="flex w-full items-center gap-3 rounded-t-xl p-3 text-left active:bg-muted/60"
+                >
+                  <ProspectAvatar name={p.name} tier={p.tier} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium">{p.name}</span>
+                    <span className="block truncate text-sm text-muted-foreground">
+                      {p.company || p.nextAction || "No company added"}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-right text-xs">
+                    {money ? (
+                      <span className="block font-semibold tabular-nums">
+                        {naira(money)}
+                      </span>
+                    ) : null}
+                    {p.nextDate && (
+                      <span
+                        className={cn(
+                          "mt-0.5 inline-flex items-center gap-0.5 text-muted-foreground",
+                          late && "font-medium text-destructive"
+                        )}
+                      >
+                        <IconCalendar className="size-3" />
+                        {relativeDay(p.nextDate, today)}
+                      </span>
+                    )}
+                  </span>
+                </button>
+                <div className="flex gap-2 border-t p-2">
+                  <MoveMenu
+                    p={p}
+                    onMove={(s) => onMove(p, s)}
+                    trigger={
+                      <Button variant="ghost" size="sm" className="flex-1">
+                        <IconArrowsMove data-icon="inline-start" /> Move to…
+                      </Button>
+                    }
+                  />
+                  {next && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => onMove(p, next)}
+                    >
+                      {STAGE_LABEL[next]}
+                      <IconArrowRight data-icon="inline-end" />
+                    </Button>
+                  )}
+                </div>
+              </li>
+            )
+          })
+        )}
+      </ol>
+    </>
   )
 }

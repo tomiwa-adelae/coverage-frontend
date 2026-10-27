@@ -5,57 +5,74 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
   IconAlertTriangle,
   IconArrowRight,
+  IconBrandGoogle,
   IconBrandWhatsapp,
   IconCalendarEvent,
+  IconCalendarPlus,
+  IconDownload,
   IconMail,
   IconMessageDots,
   IconMapPin,
   IconMessage,
   IconPhone,
+  IconSparkles,
   IconTrash,
   IconUsers,
   IconX,
 } from "@tabler/icons-react"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { telUrl, whatsappUrl } from "@/lib/contact"
+import { downloadIcs, googleCalendarUrl } from "@/lib/calendar"
+import { localToday, naira, niceDate, relativeDay } from "@/lib/format"
+import { showFormError } from "@/lib/forms"
 import {
-  addDays,
-  localToday,
-  naira,
-  nairaShort,
-  niceDate,
-  parseMoney,
-  relativeDay,
-} from "@/lib/format"
-import {
+  useAiStatus,
   useCreateProspect,
   useDeleteActivity,
   useDeleteProspect,
   useProspect,
+  useProspectsMeta,
   useUpdateProspect,
 } from "@/lib/queries"
 import {
-  STAGES,
+  OUTCOME_LABEL,
   STAGE_LABEL,
-  TIERS,
-  TIER_HINT,
   TOUCH_LABEL,
   type Activity,
   type ProspectDetail,
-  type ProspectInput,
   type Touch,
 } from "@/lib/types"
 import { Button } from "@/components/ui/button"
-import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
-import { Input } from "@/components/ui/input"
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Textarea } from "@/components/ui/textarea"
 import { ProspectAvatar, TierPill } from "@/components/prospect-avatar"
 import { useQuickLogDialog } from "@/components/quick-log"
 import { useMessageDialog } from "@/components/message-dialog"
+import { useTrackCall } from "@/components/call-tracker"
+import { BriefDialog } from "@/components/ai-brief"
+import { BalancesPanel } from "@/components/balances-panel"
+import {
+  ConsentFields,
+  DetailsFields,
+  LocationFields,
+  NextStepFields,
+  PlanField,
+  RelationshipFields,
+  StatusFields,
+  prospectSchema,
+  toDraft,
+  toInput,
+  type ProspectDraft,
+} from "@/components/prospect-fields"
 
 /** Open a prospect card (or "new") from anywhere; state lives in ?p= so Back closes it. */
 export function useOpenProspect() {
@@ -102,6 +119,8 @@ function ExistingProspect({
   Title: React.ElementType
 }) {
   const { data, isError } = useProspect(id)
+  // Lives here so saving (which remounts the form) keeps you on the same tab.
+  const [tab, setTab] = useState("overview")
   if (isError)
     return (
       <div className="p-6">
@@ -133,111 +152,54 @@ function ExistingProspect({
       prospect={data}
       onClose={onClose}
       Title={Title}
+      tab={tab}
+      onTab={setTab}
     />
   )
 }
-
-type Draft = {
-  name: string
-  company: string
-  group: string
-  phone: string
-  email: string
-  tier: string
-  stage: string
-  potential: string
-  funded: string
-  nextAction: string
-  nextDate: string
-  notes: string
-}
-
-function toDraft(p?: ProspectDetail): Draft {
-  return {
-    name: p?.name ?? "",
-    company: p?.company ?? "",
-    group: p?.group ?? "",
-    phone: p?.phone ?? "",
-    email: p?.email ?? "",
-    tier: p?.tier ?? "",
-    stage: p?.stage ?? "IDENTIFIED",
-    potential: p?.potential != null ? String(p.potential) : "",
-    funded: p?.funded != null ? String(p.funded) : "",
-    nextAction: p?.nextAction ?? "",
-    nextDate: p?.nextDate ?? "",
-    notes: p?.notes ?? "",
-  }
-}
-
-function toInput(d: Draft): ProspectInput {
-  const s = (v: string) => v.trim() || null
-  return {
-    name: d.name.trim(),
-    company: s(d.company),
-    group: s(d.group),
-    phone: s(d.phone),
-    email: s(d.email),
-    tier: (d.tier || null) as ProspectInput["tier"],
-    stage: d.stage as ProspectInput["stage"],
-    potential: parseMoney(d.potential),
-    funded: parseMoney(d.funded),
-    nextAction: s(d.nextAction),
-    nextDate: d.nextDate || null,
-    notes: s(d.notes),
-  }
-}
-
-const QUICK_DATES: [string, number][] = [
-  ["Tomorrow", 1],
-  ["3 days", 3],
-  ["1 week", 7],
-  ["2 weeks", 14],
-  ["1 month", 30],
-]
 
 function ProspectForm({
   prospect,
   onClose,
   Title,
+  tab,
+  onTab,
 }: {
   prospect?: ProspectDetail
   onClose?: () => void
   Title: React.ElementType
+  tab?: string
+  onTab?: (tab: string) => void
 }) {
   const isNew = !prospect
   const open = useOpenProspect()
   const quickLog = useQuickLogDialog()
-  const [draft, setDraft] = useState(() => toDraft(prospect))
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const { data: meta } = useProspectsMeta()
+  const form = useForm<ProspectDraft>({
+    resolver: zodResolver(prospectSchema),
+    defaultValues: toDraft(prospect),
+  })
 
   const create = useCreateProspect()
   const update = useUpdateProspect(prospect?.id ?? "")
   const remove = useDeleteProspect(prospect?.id ?? "")
 
   const today = localToday()
-  const dirty =
-    JSON.stringify(toInput(draft)) !==
-    JSON.stringify(toInput(toDraft(prospect)))
-  const set = (k: keyof Draft) => (v: string) =>
-    setDraft((d) => ({ ...d, [k]: v }))
-  const bind = (k: keyof Draft) => ({
-    value: draft[k],
-    onChange: (
-      e: React.ChangeEvent<
-        HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
-      >
-    ) => set(k)(e.target.value),
-  })
+  const dirty = form.formState.isDirty
 
-  async function save() {
-    if (!draft.name.trim()) return toast.error("Add a name first.")
-    if (isNew) {
-      const p = await create.mutateAsync(toInput(draft))
-      toast.success(`Added ${p.name}`)
-      open(p.id)
-    } else {
-      await update.mutateAsync(toInput(draft))
-      toast.success("Changes saved")
+  async function save(values: ProspectDraft) {
+    try {
+      if (isNew) {
+        const p = await create.mutateAsync(toInput(values))
+        toast.success(`Added ${p.name}`)
+        open(p.id)
+      } else {
+        await update.mutateAsync(toInput(values))
+        toast.success("Changes saved")
+      }
+    } catch (e) {
+      showFormError(form, e)
     }
   }
 
@@ -248,19 +210,38 @@ function ProspectForm({
     open(null)
   }
 
-  const saving = create.isPending || update.isPending
-
+  const saving = form.formState.isSubmitting
   const nextStep = (
-    <NextStepEditor draft={draft} set={set} bind={bind} today={today} />
+    <div className="space-y-5">
+      <PlanField form={form} prospect={prospect} />
+      <NextStepFields form={form} today={today} />
+    </div>
   )
-  const status = <StatusEditor draft={draft} set={set} bind={bind} />
-  const details = <DetailsEditor bind={bind} autoFocus={isNew} />
+  const status = <StatusFields form={form} />
+  const details = (
+    <DetailsFields form={form} groups={meta?.groups} autoFocus={isNew} />
+  )
+  const relationship = <RelationshipFields form={form} selfId={prospect?.id} />
+  const showBalances =
+    !!prospect &&
+    (prospect.stage === "ACCOUNT_OPENED" ||
+      prospect.stage === "FUNDED" ||
+      prospect.balances.length > 0)
 
   return (
-    <div className="flex min-h-full flex-col">
+    <form
+      noValidate
+      onSubmit={form.handleSubmit(save, () =>
+        toast.error("Some details need fixing", {
+          description: "Check the highlighted fields.",
+        })
+      )}
+      className="flex min-h-full flex-col"
+    >
       <header className="relative border-b p-5 sm:p-6">
         {onClose && (
           <Button
+            type="button"
             variant="ghost"
             size="icon-sm"
             className="absolute top-4 right-4"
@@ -293,11 +274,16 @@ function ProspectForm({
           <Section title="Details">{details}</Section>
           <Section title="Status">{status}</Section>
           <Section title="Next step">{nextStep}</Section>
+          <Section title="Relationship">{relationship}</Section>
         </div>
       ) : (
         <div className="flex-1 p-5 sm:p-6">
           <NextStepSummary prospect={prospect} today={today} />
-          <Tabs defaultValue="overview" className="mt-5">
+          <Tabs
+            value={tab}
+            onValueChange={(v) => onTab?.(String(v))}
+            className="mt-5"
+          >
             <TabsList className="w-full">
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="activity">
@@ -309,6 +295,9 @@ function ProspectForm({
                 )}
               </TabsTrigger>
               <TabsTrigger value="details">Details</TabsTrigger>
+              {showBalances && (
+                <TabsTrigger value="balances">Balances</TabsTrigger>
+              )}
             </TabsList>
             <TabsContent value="overview" className="space-y-7 pt-5">
               <Section title="Next step">{nextStep}</Section>
@@ -322,6 +311,16 @@ function ProspectForm({
             </TabsContent>
             <TabsContent value="details" className="space-y-7 pt-5">
               {details}
+              <Section title="Relationship">
+                {relationship}
+                <Connections prospect={prospect} />
+              </Section>
+              <Section title="Location">
+                <LocationFields form={form} areas={meta?.areas} />
+              </Section>
+              <Section title="Consent">
+                <ConsentFields form={form} consentAt={prospect.consentAt} />
+              </Section>
               <div className="rounded-lg border border-destructive/30 p-4">
                 <p className="text-sm font-medium">Delete prospect</p>
                 <p className="mt-0.5 text-sm text-muted-foreground">
@@ -329,6 +328,7 @@ function ProspectForm({
                   undone.
                 </p>
                 <Button
+                  type="button"
                   variant="destructive"
                   size="sm"
                   className="mt-3"
@@ -340,6 +340,11 @@ function ProspectForm({
                 </Button>
               </div>
             </TabsContent>
+            {showBalances && (
+              <TabsContent value="balances" className="pt-5">
+                <BalancesPanel prospect={prospect} />
+              </TabsContent>
+            )}
           </Tabs>
         </div>
       )}
@@ -352,21 +357,21 @@ function ProspectForm({
             </span>
           )}
           {!isNew && (
-            <Button variant="ghost" onClick={() => setDraft(toDraft(prospect))}>
+            <Button type="button" variant="ghost" onClick={() => form.reset()}>
               Discard
             </Button>
           )}
           <Button
+            type="submit"
             className={cn(isNew && "flex-1")}
             size="lg"
-            onClick={save}
             disabled={saving}
           >
             {saving ? "Saving…" : isNew ? "Add prospect" : "Save changes"}
           </Button>
         </div>
       )}
-    </div>
+    </form>
   )
 }
 
@@ -380,6 +385,9 @@ function ProspectHeader({
   onLog: () => void
 }) {
   const message = useMessageDialog()
+  const trackCall = useTrackCall()
+  const { data: ai } = useAiStatus()
+  const [prep, setPrep] = useState(false)
   return (
     <>
       <div className="flex items-center gap-4 pr-8">
@@ -399,7 +407,7 @@ function ProspectHeader({
             </span>
             {p.potential ? (
               <span className="text-xs text-muted-foreground tabular-nums">
-                Potential {nairaShort(p.potential)}
+                Potential {naira(p.potential)}
               </span>
             ) : null}
           </div>
@@ -414,7 +422,7 @@ function ProspectHeader({
             <Button
               variant="outline"
               nativeButton={false}
-              render={<a href={telUrl(p.phone)} />}
+              render={<a href={telUrl(p.phone)} onClick={() => trackCall(p)} />}
             >
               <IconPhone data-icon="inline-start" /> Call
             </Button>
@@ -445,8 +453,54 @@ function ProspectHeader({
         <Button variant="outline" onClick={() => message(p)}>
           <IconMessageDots data-icon="inline-start" /> Message
         </Button>
+        {ai?.enabled && (
+          <Button variant="outline" onClick={() => setPrep(true)}>
+            <IconSparkles data-icon="inline-start" /> Prep
+          </Button>
+        )}
       </div>
+      {ai?.enabled && (
+        <BriefDialog
+          prospectId={p.id}
+          name={p.name}
+          open={prep}
+          onOpenChange={setPrep}
+        />
+      )}
     </>
+  )
+}
+
+/** Who referred them, who they referred, and others at the same company. */
+function Connections({ prospect: p }: { prospect: ProspectDetail }) {
+  const open = useOpenProspect()
+  const rows: [string, { id: string; name: string }[]][] = [
+    ["Referred by", p.referredBy ? [p.referredBy] : []],
+    ["Referred", p.referrals],
+    [`Also at ${p.company}`, p.sameCompany],
+  ]
+  const shown = rows.filter(([, list]) => list.length)
+  if (!shown.length) return null
+  return (
+    <dl className="mt-5 space-y-3 rounded-lg bg-muted/50 p-4 text-sm">
+      {shown.map(([label, list]) => (
+        <div key={label}>
+          <dt className="text-xs text-muted-foreground">{label}</dt>
+          <dd className="mt-1 flex flex-wrap gap-1.5">
+            {list.map((r) => (
+              <button
+                key={r.id}
+                type="button"
+                className="rounded-full border bg-card px-2.5 py-0.5 text-xs font-medium hover:bg-muted"
+                onClick={() => open(r.id)}
+              >
+                {r.name}
+              </button>
+            ))}
+          </dd>
+        </div>
+      ))}
+    </dl>
   )
 }
 
@@ -506,184 +560,65 @@ function NextStepSummary({
           {relativeDay(p.nextDate, today)}
         </span>
       )}
+      {p.nextDate && live && <AddToCalendar prospect={p} date={p.nextDate} />}
     </div>
   )
 }
 
-type Bind = (k: keyof Draft) => {
-  value: string
-  onChange: (
-    e: React.ChangeEvent<
-      HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
-    >
-  ) => void
-}
-
-function NextStepEditor({
-  draft,
-  set,
-  bind,
-  today,
+function AddToCalendar({
+  prospect: p,
+  date,
 }: {
-  draft: Draft
-  set: (k: keyof Draft) => (v: string) => void
-  bind: Bind
-  today: string
+  prospect: ProspectDetail
+  date: string
 }) {
+  const event = {
+    title: `${p.nextAction || "Follow up"}: ${p.name}`,
+    date,
+    details: [
+      p.company,
+      p.phone && `Phone: ${p.phone}`,
+      `Stage: ${STAGE_LABEL[p.stage]}`,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+    location: p.address ?? undefined,
+  }
   return (
-    <div className="space-y-3">
-      <Field>
-        <FieldLabel htmlFor="nextAction">Action</FieldLabel>
-        <Input
-          id="nextAction"
-          placeholder="e.g. Send account opening package"
-          {...bind("nextAction")}
-        />
-      </Field>
-      <Field>
-        <FieldLabel htmlFor="nextDate">Date</FieldLabel>
-        <Input id="nextDate" type="date" {...bind("nextDate")} />
-      </Field>
-      <div className="flex flex-wrap gap-1.5">
-        {QUICK_DATES.map(([label, n]) => {
-          const d = addDays(today, n)
-          return (
-            <button
-              key={n}
-              type="button"
-              onClick={() => set("nextDate")(d)}
-              className={cn(
-                "rounded-full border px-2.5 py-1 text-xs font-medium transition-colors hover:bg-muted",
-                draft.nextDate === d &&
-                  "border-primary bg-primary/10 text-primary"
-              )}
-            >
-              {label}
-            </button>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-function StatusEditor({
-  draft,
-  set,
-  bind,
-}: {
-  draft: Draft
-  set: (k: keyof Draft) => (v: string) => void
-  bind: Bind
-}) {
-  return (
-    <div className="space-y-4">
-      <Field>
-        <FieldLabel>Tier</FieldLabel>
-        <div
-          className="grid grid-cols-4 gap-1.5"
-          role="radiogroup"
-          aria-label="Tier"
-        >
-          {[...TIERS, ""].map((t) => (
-            <button
-              key={t || "none"}
-              type="button"
-              role="radio"
-              aria-checked={draft.tier === t}
-              title={t ? TIER_HINT[t as keyof typeof TIER_HINT] : "Not rated"}
-              onClick={() => set("tier")(t)}
-              className={cn(
-                "h-9 rounded-md border text-sm font-semibold transition-colors hover:bg-muted",
-                draft.tier === t &&
-                  t === "A" &&
-                  "border-tier-a bg-tier-a/15 text-tier-a",
-                draft.tier === t &&
-                  t === "B" &&
-                  "border-tier-b bg-tier-b/12 text-tier-b",
-                draft.tier === t &&
-                  t === "C" &&
-                  "border-tier-c bg-tier-c/12 text-tier-c",
-                draft.tier === t && !t && "border-foreground/30 bg-muted"
-              )}
-            >
-              {t || "—"}
-            </button>
-          ))}
-        </div>
-        {draft.tier && (
-          <FieldDescription>
-            {TIER_HINT[draft.tier as keyof typeof TIER_HINT]}
-          </FieldDescription>
-        )}
-      </Field>
-      <Field>
-        <FieldLabel htmlFor="stage">Stage</FieldLabel>
-        <NativeSelect id="stage" {...bind("stage")}>
-          {STAGES.map((s) => (
-            <NativeSelectOption key={s} value={s}>
-              {STAGE_LABEL[s]}
-            </NativeSelectOption>
-          ))}
-        </NativeSelect>
-      </Field>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <MoneyField
-          id="potential"
-          label="Deposit potential"
-          {...bind("potential")}
-        />
-        <MoneyField id="funded" label="Funded balance" {...bind("funded")} />
-      </div>
-    </div>
-  )
-}
-
-function DetailsEditor({
-  bind,
-  autoFocus,
-}: {
-  bind: Bind
-  autoFocus: boolean
-}) {
-  return (
-    <div className="space-y-4">
-      <Field>
-        <FieldLabel htmlFor="name">Name</FieldLabel>
-        <Input id="name" autoFocus={autoFocus} {...bind("name")} />
-      </Field>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field>
-          <FieldLabel htmlFor="company">Company or business</FieldLabel>
-          <Input id="company" {...bind("company")} />
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="group">Group</FieldLabel>
-          <Input
-            id="group"
-            placeholder="e.g. NYSC, Family"
-            {...bind("group")}
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            className="-my-0.5 shrink-0"
+            aria-label="Add to calendar"
+            title="Add to calendar"
           />
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="phone">Phone</FieldLabel>
-          <Input id="phone" type="tel" inputMode="tel" {...bind("phone")} />
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="email">Email</FieldLabel>
-          <Input id="email" type="email" {...bind("email")} />
-        </Field>
-      </div>
-      <Field>
-        <FieldLabel htmlFor="notes">Notes</FieldLabel>
-        <Textarea
-          id="notes"
-          rows={4}
-          placeholder="Who they are, who they know, what they need"
-          {...bind("notes")}
-        />
-      </Field>
-    </div>
+        }
+      >
+        <IconCalendarPlus />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-52">
+        <DropdownMenuItem
+          render={
+            <a
+              href={googleCalendarUrl(event)}
+              target="_blank"
+              rel="noreferrer"
+            />
+          }
+        >
+          <IconBrandGoogle /> Google Calendar
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => downloadIcs(event, `followup-${p.id}-${date}`)}
+        >
+          <IconDownload /> Apple, Outlook (.ics)
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 
@@ -730,7 +665,8 @@ function Timeline({
             </span>
             <div className="min-w-0 flex-1 pt-1">
               <p className="text-xs text-muted-foreground">
-                {isStage ? "Stage changed" : TOUCH_LABEL[a.type as Touch]} ·{" "}
+                {isStage ? "Stage changed" : TOUCH_LABEL[a.type as Touch]}
+                {a.outcome && ` · ${OUTCOME_LABEL[a.outcome]}`} ·{" "}
                 {niceDate(a.occurredAt.slice(0, 10))}
               </p>
               <p
@@ -777,32 +713,5 @@ function Section({
       </h3>
       {children}
     </section>
-  )
-}
-
-function MoneyField({
-  id,
-  label,
-  value,
-  onChange,
-}: {
-  id: string
-  label: string
-  value: string
-  onChange: React.ChangeEventHandler<HTMLInputElement>
-}) {
-  const n = parseMoney(value)
-  return (
-    <Field>
-      <FieldLabel htmlFor={id}>{label} (₦)</FieldLabel>
-      <Input
-        id={id}
-        inputMode="numeric"
-        placeholder="0"
-        value={value}
-        onChange={onChange}
-      />
-      {n ? <FieldDescription>{naira(n)}</FieldDescription> : null}
-    </Field>
   )
 }

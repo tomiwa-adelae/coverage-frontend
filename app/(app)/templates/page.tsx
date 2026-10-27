@@ -1,6 +1,11 @@
 "use client"
 
 import { useRef, useState } from "react"
+import { useForm, useWatch } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { z } from "zod"
+import { showFormError } from "@/lib/forms"
+import { FormField } from "@/components/form-field"
 import { toast } from "sonner"
 import { IconPencil, IconPlus, IconTrash } from "@tabler/icons-react"
 import { fillTemplate, PLACEHOLDERS } from "@/lib/templates"
@@ -21,12 +26,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import {
-  Field,
-  FieldDescription,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field"
+import { FieldGroup } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
@@ -140,6 +140,20 @@ export default function TemplatesPage() {
   )
 }
 
+const templateSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1, "Give the template a name")
+    .max(80, "Name must be 80 characters or fewer"),
+  body: z
+    .string()
+    .trim()
+    .min(1, "Write the message")
+    .max(2000, "Message must be 2,000 characters or fewer"),
+})
+type TemplateValues = z.infer<typeof templateSchema>
+
 function TemplateForm({
   template,
   onDone,
@@ -149,30 +163,43 @@ function TemplateForm({
 }) {
   const { data: me } = useMe()
   const save = useSaveTemplate()
-  const [name, setName] = useState(template?.name ?? "")
-  const [body, setBody] = useState(template?.body ?? "")
-  const bodyRef = useRef<HTMLTextAreaElement>(null)
+  const form = useForm<TemplateValues>({
+    resolver: zodResolver(templateSchema),
+    defaultValues: { name: template?.name ?? "", body: template?.body ?? "" },
+  })
+  const body = useWatch({ control: form.control, name: "body" })
+  const bodyRef = useRef<HTMLTextAreaElement | null>(null)
 
   function insert(token: string) {
     const el = bodyRef.current
     const start = el?.selectionStart ?? body.length
     const end = el?.selectionEnd ?? body.length
-    setBody(body.slice(0, start) + token + body.slice(end))
+    form.setValue("body", body.slice(0, start) + token + body.slice(end), {
+      shouldDirty: true,
+      shouldValidate: form.formState.isSubmitted,
+    })
     requestAnimationFrame(() => {
       el?.focus()
       el?.setSelectionRange(start + token.length, start + token.length)
     })
   }
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault()
-    await save.mutateAsync({ id: template?.id, name, body })
-    toast.success(template ? "Template updated" : "Template created")
-    onDone()
+  async function submit(values: TemplateValues) {
+    try {
+      await save.mutateAsync({ id: template?.id, ...values })
+      toast.success(template ? "Template updated" : "Template created")
+      onDone()
+    } catch (e) {
+      showFormError(form, e)
+    }
   }
 
   return (
-    <form onSubmit={submit} className="grid gap-5">
+    <form
+      noValidate
+      onSubmit={form.handleSubmit(submit)}
+      className="grid gap-5"
+    >
       <DialogHeader>
         <DialogTitle>{template ? "Edit template" : "New template"}</DialogTitle>
         <DialogDescription>
@@ -181,57 +208,61 @@ function TemplateForm({
         </DialogDescription>
       </DialogHeader>
       <FieldGroup>
-        <Field>
-          <FieldLabel htmlFor="tpl-name">Name</FieldLabel>
-          <Input
-            id="tpl-name"
-            required
-            maxLength={80}
-            placeholder="e.g. Follow-up after visit"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="tpl-body">Message</FieldLabel>
-          <div className="flex flex-wrap gap-1.5">
-            {PLACEHOLDERS.map(([token, label]) => (
-              <button
-                key={token}
-                type="button"
-                title={label}
-                onClick={() => insert(token)}
-                className="rounded-full border bg-brand/10 px-2 py-0.5 font-mono text-[11px] transition-colors hover:bg-brand/25"
-              >
-                {token}
-              </button>
-            ))}
-          </div>
-          <Textarea
-            id="tpl-body"
-            ref={bodyRef}
-            required
-            rows={6}
-            maxLength={2000}
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-          />
-          {body && (
-            <FieldDescription className="rounded-lg bg-muted px-3 py-2 whitespace-pre-line">
-              <span className="mb-1 block text-[11px] font-semibold tracking-wide uppercase">
-                Preview
-              </span>
-              {fillTemplate(body, SAMPLE, me?.name)}
-            </FieldDescription>
+        <FormField
+          control={form.control}
+          name="name"
+          label="Name"
+          render={(field) => (
+            <Input {...field} placeholder="e.g. Follow-up after visit" />
           )}
-        </Field>
+        />
+        <FormField
+          control={form.control}
+          name="body"
+          label="Message"
+          description={`${body.length.toLocaleString("en-NG")} / 2,000 characters`}
+          render={({ ref, ...field }) => (
+            <>
+              <div className="flex flex-wrap gap-1.5">
+                {PLACEHOLDERS.map(([token, label]) => (
+                  <button
+                    key={token}
+                    type="button"
+                    title={`Insert ${label.toLowerCase()}`}
+                    onClick={() => insert(token)}
+                    className="rounded-full border bg-brand/10 px-2 py-0.5 font-mono text-[11px] transition-colors hover:bg-brand/25"
+                  >
+                    {token}
+                  </button>
+                ))}
+              </div>
+              <Textarea
+                {...field}
+                ref={(el) => {
+                  ref(el)
+                  bodyRef.current = el
+                }}
+                rows={6}
+                placeholder="Hello {firstName}, this is {myName} from ProvidusUnity Bank…"
+              />
+            </>
+          )}
+        />
+        {body && (
+          <div className="rounded-lg bg-muted px-3 py-2 text-sm whitespace-pre-line text-muted-foreground">
+            <span className="mb-1 block text-[11px] font-semibold tracking-wide uppercase">
+              Preview
+            </span>
+            {fillTemplate(body, SAMPLE, me?.name)}
+          </div>
+        )}
       </FieldGroup>
       <DialogFooter>
         <Button type="button" variant="outline" onClick={onDone}>
           Cancel
         </Button>
-        <Button type="submit" disabled={save.isPending}>
-          {save.isPending ? "Saving…" : "Save"}
+        <Button type="submit" disabled={form.formState.isSubmitting}>
+          {form.formState.isSubmitting ? "Saving…" : "Save template"}
         </Button>
       </DialogFooter>
     </form>

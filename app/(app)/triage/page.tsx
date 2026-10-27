@@ -11,7 +11,7 @@ import {
   IconX,
 } from "@tabler/icons-react"
 import { cn } from "@/lib/utils"
-import { addDays, nairaShort, niceDate } from "@/lib/format"
+import { addDays, naira, niceDate } from "@/lib/format"
 import { usePatchProspect, useToday } from "@/lib/queries"
 import { TIERS, TIER_HINT, type Prospect, type Tier } from "@/lib/types"
 import { Button } from "@/components/ui/button"
@@ -297,7 +297,7 @@ function Session({
               <TierPill tier={current.tier} />
               {current.potential ? (
                 <span className="text-xs text-muted-foreground tabular-nums">
-                  Potential {nairaShort(current.potential)}
+                  Potential {naira(current.potential)}
                 </span>
               ) : null}
             </div>

@@ -4,11 +4,17 @@ import Link from "next/link"
 import {
   IconArrowRight,
   IconBolt,
+  IconBrandWhatsapp,
+  IconCake,
   IconCalendarPlus,
   IconChecks,
+  IconTrendingDown,
+  IconTrendingUp,
 } from "@tabler/icons-react"
 import { cn } from "@/lib/utils"
-import { longDate } from "@/lib/format"
+import { whatsappUrl } from "@/lib/contact"
+import { longDate, monthName, naira, nairaShort } from "@/lib/format"
+import { STAGE_LABEL, type TodayData } from "@/lib/types"
 import { useMe, useToday } from "@/lib/queries"
 import { GoalCard } from "@/components/goal-card"
 import { ProspectList } from "@/components/prospect-list"
@@ -23,6 +29,7 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty"
 import { Skeleton } from "@/components/ui/skeleton"
+import { useOpenProspect } from "@/components/prospect-sheet"
 
 const NO_STEP_LIMIT = 8
 
@@ -43,8 +50,8 @@ export default function TodayPage() {
     )
   if (!data) return <TodaySkeleton />
 
-  const { today, overdue, dueToday, noNextStep, upcoming, unrated } = data
-  const actNow = overdue.length + dueToday.length
+  const { today, overdue, focus, noNextStep, upcoming, unrated, stale } = data
+  const actNow = focus.length
   const firstName = me?.name.split(" ")[0]
 
   return (
@@ -75,6 +82,10 @@ export default function TodayPage() {
           tone={overdue.length ? "danger" : undefined}
         />
       </div>
+
+      <PaceCard pace={data.pace} />
+
+      {data.birthdays.length > 0 && <Birthdays people={data.birthdays} />}
 
       {(unrated.length > 0 || noNextStep.length > 0) && (
         <div className="mt-4 grid gap-2.5 sm:grid-cols-2">
@@ -121,26 +132,32 @@ export default function TodayPage() {
           )}
         </Empty>
       ) : (
-        <>
-          {overdue.length > 0 && (
-            <PageSection
-              title="Overdue"
-              count={overdue.length}
-              className="mt-8"
-            >
-              <ProspectList items={overdue} today={today} actions />
-            </PageSection>
-          )}
-          {dueToday.length > 0 && (
-            <PageSection
-              title="Due today"
-              count={dueToday.length}
-              className="mt-8"
-            >
-              <ProspectList items={dueToday} today={today} actions />
-            </PageSection>
-          )}
-        </>
+        <PageSection
+          title="Today’s calls"
+          count={focus.length}
+          hint="Most valuable first: deposit potential, stage and how late."
+          className="mt-8"
+        >
+          <ProspectList items={focus} today={today} actions />
+        </PageSection>
+      )}
+
+      {stale.length > 0 && (
+        <PageSection
+          title="Going cold"
+          count={data.staleCount}
+          hint="Stuck in the same stage longer than usual. A nudge now keeps them warm."
+          className="mt-8"
+        >
+          <ProspectList
+            items={stale}
+            today={today}
+            actions
+            subtitle={(p) =>
+              `${p.daysInStage} days in ${STAGE_LABEL[p.stage]}${p.nextAction ? ` · ${p.nextAction}` : ""}`
+            }
+          />
+        </PageSection>
       )}
 
       <PageSection
@@ -177,6 +194,116 @@ export default function TodayPage() {
           )}
         </PageSection>
       )}
+    </div>
+  )
+}
+
+/** Balance against target, and where the current pace lands by the deadline. */
+function PaceCard({ pace }: { pace: TodayData["pace"] }) {
+  const pct = pace.target
+    ? Math.min(100, (pace.current / pace.target) * 100)
+    : 0
+  const projectedPct = pace.target
+    ? Math.min(100, (pace.projected / pace.target) * 100)
+    : 0
+  const Trend = pace.onPace ? IconTrendingUp : IconTrendingDown
+  return (
+    <Link
+      href="/progress"
+      className="group mt-2.5 block rounded-xl border bg-card p-4 shadow-xs transition-colors hover:bg-muted/40 sm:mt-3"
+    >
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <p className="text-sm">
+          <span className="text-lg font-semibold tabular-nums">
+            {nairaShort(pace.current)}
+          </span>{" "}
+          <span className="text-muted-foreground">
+            of {nairaShort(pace.target)} target
+          </span>
+        </p>
+        <p
+          className={cn(
+            "inline-flex items-center gap-1 text-xs font-medium",
+            pace.onPace ? "text-success" : "text-destructive"
+          )}
+        >
+          <Trend className="size-4" />
+          {pace.onPace ? "On pace" : "Behind pace"}: {naira(pace.projected)} by{" "}
+          {monthName(pace.endMonth)}
+        </p>
+      </div>
+      <div
+        className="relative mt-3 h-2.5 overflow-hidden rounded-full bg-muted"
+        role="progressbar"
+        aria-valuenow={Math.round(pct)}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label="Balance against target"
+      >
+        <div
+          className="absolute inset-y-0 left-0 rounded-full bg-primary/25"
+          style={{ width: `${projectedPct}%` }}
+        />
+        <div
+          className="absolute inset-y-0 left-0 rounded-full bg-primary"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <p className="mt-2 text-xs text-muted-foreground">
+        Light bar shows where you&apos;ll be at today&apos;s pace.{" "}
+        <span className="font-medium text-primary group-hover:underline">
+          See progress
+        </span>
+      </p>
+    </Link>
+  )
+}
+
+function Birthdays({ people }: { people: TodayData["birthdays"] }) {
+  const open = useOpenProspect()
+  return (
+    <div className="mt-4 rounded-xl border border-warning/40 bg-warning/10 p-3.5">
+      <p className="flex items-center gap-2 text-sm font-semibold">
+        <IconCake className="size-4" /> Birthdays this week
+      </p>
+      <ul className="mt-2 space-y-1.5">
+        {people.map((p) => (
+          <li key={p.id} className="flex items-center gap-2 text-sm">
+            <button
+              type="button"
+              className="min-w-0 flex-1 truncate text-left hover:underline"
+              onClick={() => open(p.id)}
+            >
+              <span className="font-medium">{p.name}</span>{" "}
+              <span className="text-muted-foreground">
+                {p.inDays === 0
+                  ? "today 🎉"
+                  : p.inDays === 1
+                    ? "tomorrow"
+                    : `in ${p.inDays} days`}
+              </span>
+            </button>
+            {p.phone && (
+              <Button
+                size="xs"
+                variant="outline"
+                nativeButton={false}
+                render={
+                  <a
+                    href={`${whatsappUrl(p.phone)}?text=${encodeURIComponent(
+                      `Happy birthday ${p.name.split(" ")[0]}! Wishing you a wonderful year ahead.`
+                    )}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  />
+                }
+              >
+                <IconBrandWhatsapp data-icon="inline-start" /> Wish
+              </Button>
+            )}
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }

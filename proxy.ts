@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 
-const PUBLIC_PATHS = ["/login", "/signup"]
+// Signed-in visitors are sent home from these.
+const GUEST_ONLY = ["/login", "/signup", "/forgot-password"]
+// Reachable either way (a reset link may be opened while still signed in).
+const PUBLIC_PATHS = [...GUEST_ONLY, "/reset-password"]
 
 // Cheap presence check only; the API verifies the tokens on every request.
 export function proxy(request: NextRequest) {
@@ -13,7 +16,7 @@ export function proxy(request: NextRequest) {
   if (!signedIn && !isPublic) {
     return NextResponse.redirect(new URL("/login", request.url))
   }
-  if (signedIn && isPublic) {
+  if (signedIn && GUEST_ONLY.includes(pathname)) {
     return NextResponse.redirect(new URL("/", request.url))
   }
   return NextResponse.next()

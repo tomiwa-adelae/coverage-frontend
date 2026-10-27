@@ -1,25 +1,48 @@
 "use client"
 
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { QueryClient } from "@tanstack/react-query"
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client"
 import { useState } from "react"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/sonner"
+import { PwaSupport } from "@/components/pwa"
+import {
+  CACHE_BUSTER,
+  CACHE_MAX_AGE,
+  persister,
+  shouldPersist,
+} from "@/lib/offline-cache"
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [client] = useState(
     () =>
       new QueryClient({
         defaultOptions: {
-          queries: { staleTime: 30_000, refetchOnWindowFocus: true, retry: 1 },
+          queries: {
+            staleTime: 30_000,
+            // Kept as long as the offline copy, or restored data is dropped at once.
+            gcTime: CACHE_MAX_AGE,
+            refetchOnWindowFocus: true,
+            retry: 1,
+          },
         },
       })
   )
   return (
-    <QueryClientProvider client={client}>
+    <PersistQueryClientProvider
+      client={client}
+      persistOptions={{
+        persister: persister!,
+        maxAge: CACHE_MAX_AGE,
+        buster: CACHE_BUSTER,
+        dehydrateOptions: { shouldDehydrateQuery: shouldPersist },
+      }}
+    >
       <ThemeProvider>
         {children}
-        <Toaster position="top-center" />
+        <PwaSupport />
+        <Toaster position="top-center" richColors closeButton />
       </ThemeProvider>
-    </QueryClientProvider>
+    </PersistQueryClientProvider>
   )
 }

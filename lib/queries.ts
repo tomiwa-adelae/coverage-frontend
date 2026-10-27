@@ -9,16 +9,29 @@ import {
 import { toast } from "sonner"
 import { api } from "./api"
 import type {
+  AuditEntry,
+  BalanceSheet,
+  Brief,
+  Cadence,
+  CadenceStep,
+  CardScan,
+  Draft,
   Me,
+  Outcome,
   ProgressData,
   Prospect,
   ProspectDetail,
   ProspectInput,
   ProspectsMeta,
   Template,
+  SecurityData,
+  Team,
   TemplateInput,
+  TidiedNote,
+  TargetData,
   TodayData,
   Touch,
+  WeeklyReport,
 } from "./types"
 
 export interface ProspectFilters {
@@ -26,6 +39,7 @@ export interface ProspectFilters {
   stage?: string
   tier?: string
   group?: string
+  area?: string
 }
 
 export const useMe = () =>
@@ -41,6 +55,12 @@ export const useProgress = () =>
   useQuery({
     queryKey: ["dashboard", "progress"],
     queryFn: () => api<ProgressData>("/dashboard/progress"),
+  })
+
+export const useTarget = () =>
+  useQuery({
+    queryKey: ["dashboard", "target"],
+    queryFn: () => api<TargetData>("/dashboard/target"),
   })
 
 const filterQs = (filters: ProspectFilters) =>
@@ -90,7 +110,6 @@ export function useCreateProspect() {
     mutationFn: (body: ProspectInput) =>
       api<Prospect>("/prospects", { method: "POST", body }),
     onSuccess: invalidate,
-    onError,
   })
 }
 
@@ -100,7 +119,6 @@ export function useUpdateProspect(id: string) {
     mutationFn: (body: ProspectInput) =>
       api<Prospect>(`/prospects/${id}`, { method: "PATCH", body }),
     onSuccess: invalidate,
-    onError,
   })
 }
 
@@ -118,12 +136,13 @@ export function usePatchProspect() {
 export interface QuickLogInput {
   id: string
   type: Touch
+  outcome?: Outcome
   note?: string
   nextDate?: string
   nextAction?: string
 }
 
-/** Log a contact and set the follow-up in one call. */
+/** Log a contact and set the follow-up in one call. Callers show errors. */
 export function useQuickLog() {
   const invalidate = useInvalidateAll()
   return useMutation({
@@ -133,7 +152,6 @@ export function useQuickLog() {
         body,
       }),
     onSuccess: invalidate,
-    onError,
   })
 }
 
@@ -149,7 +167,7 @@ export function useDeleteProspect(id: string) {
 export function useLogActivity(id: string) {
   const invalidate = useInvalidateAll()
   return useMutation({
-    mutationFn: (body: { type: Touch; note?: string }) =>
+    mutationFn: (body: { type: Touch; outcome?: Outcome; note?: string }) =>
       api<ProspectDetail>(`/prospects/${id}/activities`, {
         method: "POST",
         body,
@@ -171,19 +189,67 @@ export function useDeleteActivity(prospectId: string) {
   })
 }
 
+export type MeInput = Partial<
+  Pick<
+    Me,
+    | "name"
+    | "phone"
+    | "jobTitle"
+    | "branch"
+    | "targetAmount"
+    | "targetStartDate"
+    | "dailyGoal"
+    | "targetEndDate"
+    | "digestEmail"
+    | "digestPush"
+    | "digestHour"
+    | "managerEmail"
+    | "weeklyReport"
+  >
+>
+
+/** Errors are left to the calling form, which pins them to fields. */
 export function useUpdateMe() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (
-      body: Partial<
-        Pick<Me, "name" | "targetAmount" | "targetStartDate" | "dailyGoal">
-      >
-    ) => api<Me>("/users/me", { method: "PATCH", body }),
+    mutationFn: (body: MeInput) =>
+      api<Me>("/users/me", { method: "PATCH", body }),
     onSuccess: (me) => {
       qc.setQueryData(["me"], me)
       qc.invalidateQueries({ queryKey: ["dashboard"] })
     },
+  })
+}
+
+export function useAvatar() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (dataUrl: string | null) =>
+      dataUrl
+        ? api<Me>("/users/me/avatar", { method: "PUT", body: { dataUrl } })
+        : api<Me>("/users/me/avatar", { method: "DELETE" }),
+    onSuccess: (me) => qc.setQueryData(["me"], me),
     onError,
+  })
+}
+
+export function useChangePassword() {
+  return useMutation({
+    mutationFn: (body: { currentPassword: string; newPassword: string }) =>
+      api<{ ok: true }>("/auth/change-password", { method: "POST", body }),
+  })
+}
+
+/** Errors are left to the caller so the dialog can stay open with the message. */
+export function useSendEmail(prospectId: string) {
+  const invalidate = useInvalidateAll()
+  return useMutation({
+    mutationFn: (body: { subject: string; body: string }) =>
+      api<ProspectDetail>(`/prospects/${prospectId}/email`, {
+        method: "POST",
+        body,
+      }),
+    onSuccess: invalidate,
   })
 }
 
@@ -201,7 +267,6 @@ export function useSaveTemplate() {
         ? api<Template>(`/templates/${id}`, { method: "PATCH", body })
         : api<Template>("/templates", { method: "POST", body }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["templates"] }),
-    onError,
   })
 }
 
@@ -237,3 +302,357 @@ export function useMoveStage(listKey: readonly unknown[]) {
     onSettled: invalidate,
   })
 }
+
+export function useSendSms(prospectId: string) {
+  const invalidate = useInvalidateAll()
+  return useMutation({
+    mutationFn: (body: { body: string }) =>
+      api<ProspectDetail>(`/prospects/${prospectId}/sms`, {
+        method: "POST",
+        body,
+      }),
+    onSuccess: invalidate,
+  })
+}
+
+// Balances
+
+export const useBalanceSheet = (month?: string) =>
+  useQuery({
+    queryKey: ["balances", month ?? "current"],
+    queryFn: () =>
+      api<BalanceSheet>(`/balances${month ? `?month=${month}` : ""}`),
+    placeholderData: keepPreviousData,
+    // The sheet is a form; a background refetch would wipe what's been typed.
+    refetchOnWindowFocus: false,
+  })
+
+function useInvalidateBalances() {
+  const qc = useQueryClient()
+  const invalidate = useInvalidateAll()
+  return () => {
+    qc.invalidateQueries({ queryKey: ["balances"] })
+    invalidate()
+  }
+}
+
+export function useSaveBalanceSheet() {
+  const invalidate = useInvalidateBalances()
+  return useMutation({
+    mutationFn: (body: {
+      month: string
+      rows: { prospectId: string; amount: number | null }[]
+    }) => api<BalanceSheet>("/balances", { method: "PUT", body }),
+    onSuccess: invalidate,
+  })
+}
+
+export function useSetBalance(prospectId: string) {
+  const invalidate = useInvalidateBalances()
+  return useMutation({
+    mutationFn: (body: { month: string; amount: number }) =>
+      api<ProspectDetail>(`/prospects/${prospectId}/balances`, {
+        method: "PUT",
+        body,
+      }),
+    onSuccess: invalidate,
+  })
+}
+
+export function useRemoveBalance(prospectId: string) {
+  const invalidate = useInvalidateBalances()
+  return useMutation({
+    mutationFn: (month: string) =>
+      api<ProspectDetail>(`/prospects/${prospectId}/balances/${month}`, {
+        method: "DELETE",
+      }),
+    onSuccess: invalidate,
+    onError,
+  })
+}
+
+// Import
+
+export interface ImportResult {
+  created: number
+  skipped: { row: number; name: string; reason: string }[]
+}
+
+export function useImportProspects() {
+  const invalidate = useInvalidateAll()
+  return useMutation({
+    mutationFn: (rows: ProspectInput[]) =>
+      api<ImportResult>("/prospects/import", {
+        method: "POST",
+        body: { rows },
+      }),
+    onSuccess: invalidate,
+  })
+}
+
+// Plans (cadences)
+
+export const useCadences = () =>
+  useQuery({
+    queryKey: ["cadences"],
+    queryFn: () => api<Cadence[]>("/cadences"),
+  })
+
+export type CadenceInput = { name: string; steps: CadenceStep[] }
+
+export function useSaveCadence() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...body }: CadenceInput & { id?: string }) =>
+      id
+        ? api<Cadence>(`/cadences/${id}`, { method: "PATCH", body })
+        : api<Cadence>("/cadences", { method: "POST", body }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["cadences"] }),
+  })
+}
+
+export function useDeleteCadence() {
+  const qc = useQueryClient()
+  const invalidate = useInvalidateAll()
+  return useMutation({
+    mutationFn: (id: string) =>
+      api<void>(`/cadences/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["cadences"] })
+      invalidate()
+    },
+    onError,
+  })
+}
+
+// AI
+
+export const useAiStatus = () =>
+  useQuery({
+    queryKey: ["ai", "status"],
+    queryFn: () => api<{ enabled: boolean }>("/ai/status"),
+    staleTime: Infinity,
+  })
+
+/** AI calls leave errors to the caller, which shows them in place. */
+export const useBrief = () =>
+  useMutation({
+    mutationFn: (prospectId: string) =>
+      api<Brief>(`/ai/prospects/${prospectId}/brief`, { method: "POST" }),
+  })
+
+export const useDraft = () =>
+  useMutation({
+    mutationFn: ({
+      prospectId,
+      ...body
+    }: {
+      prospectId: string
+      channel: "WHATSAPP" | "EMAIL" | "SMS"
+      goal?: string
+    }) =>
+      api<Draft>(`/ai/prospects/${prospectId}/draft`, {
+        method: "POST",
+        body,
+      }),
+  })
+
+export const useTidyNote = () =>
+  useMutation({
+    mutationFn: (body: { text: string; prospectId?: string }) =>
+      api<TidiedNote>("/ai/notes", { method: "POST", body }),
+  })
+
+export const useScanCard = () =>
+  useMutation({
+    mutationFn: (image: string) =>
+      api<CardScan>("/ai/business-card", { method: "POST", body: { image } }),
+  })
+
+// Notifications, digest and the weekly report
+
+export const useNotificationConfig = () =>
+  useQuery({
+    queryKey: ["notifications", "config"],
+    queryFn: () =>
+      api<{ pushKey: string | null; email: boolean }>("/notifications/config"),
+    staleTime: Infinity,
+  })
+
+export const useWeeklyReport = () =>
+  useQuery({
+    queryKey: ["notifications", "weekly-report"],
+    queryFn: () => api<WeeklyReport>("/notifications/weekly-report"),
+  })
+
+export const useSendWeeklyReport = () =>
+  useMutation({
+    mutationFn: () =>
+      api<{ ok: true }>("/notifications/weekly-report", { method: "POST" }),
+  })
+
+export const useSendDigest = () =>
+  useMutation({
+    mutationFn: () =>
+      api<{ ok: true }>("/notifications/digest", { method: "POST" }),
+  })
+
+// Calendar feed
+
+export const useCalendarFeed = () =>
+  useQuery({
+    queryKey: ["calendar"],
+    queryFn: () => api<{ url: string | null }>("/calendar"),
+  })
+
+export function useCalendarFeedLink() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (
+      action: "create" | "remove"
+    ): Promise<{ url: string | null }> =>
+      action === "create"
+        ? api<{ url: string }>("/calendar", { method: "POST" })
+        : api<void>("/calendar", { method: "DELETE" }).then(() => ({
+            url: null,
+          })),
+    onSuccess: (data) => qc.setQueryData(["calendar"], data),
+    onError,
+  })
+}
+
+// Security
+
+export const useSecurity = () =>
+  useQuery({
+    queryKey: ["security"],
+    queryFn: () => api<SecurityData>("/security"),
+  })
+
+export const useSecurityLog = () =>
+  useQuery({
+    queryKey: ["security", "log"],
+    queryFn: () => api<AuditEntry[]>("/security/log"),
+  })
+
+function useInvalidateSecurity() {
+  const qc = useQueryClient()
+  return () => {
+    qc.invalidateQueries({ queryKey: ["security"] })
+    qc.invalidateQueries({ queryKey: ["me"] })
+  }
+}
+
+export function useRevokeSession() {
+  const invalidate = useInvalidateSecurity()
+  return useMutation({
+    mutationFn: (id: string) =>
+      api<void>(`/security/sessions/${id}`, { method: "DELETE" }),
+    onSuccess: invalidate,
+    onError,
+  })
+}
+
+export function useRevokeOtherSessions() {
+  const invalidate = useInvalidateSecurity()
+  return useMutation({
+    mutationFn: () =>
+      api<{ count: number }>("/security/sessions/revoke-others", {
+        method: "POST",
+      }),
+    onSuccess: invalidate,
+    onError,
+  })
+}
+
+export const useSetupTwoFactor = () =>
+  useMutation({
+    mutationFn: () =>
+      api<{ secret: string; otpauthUrl: string }>(
+        "/security/two-factor/setup",
+        { method: "POST" }
+      ),
+    onError,
+  })
+
+export function useEnableTwoFactor() {
+  const invalidate = useInvalidateSecurity()
+  return useMutation({
+    mutationFn: (code: string) =>
+      api<{ backupCodes: string[] }>("/security/two-factor/enable", {
+        method: "POST",
+        body: { code },
+      }),
+    onSuccess: invalidate,
+  })
+}
+
+export function useDisableTwoFactor() {
+  const invalidate = useInvalidateSecurity()
+  return useMutation({
+    mutationFn: (password: string) =>
+      api<{ ok: true }>("/security/two-factor/disable", {
+        method: "POST",
+        body: { password },
+      }),
+    onSuccess: invalidate,
+  })
+}
+
+export function useNewBackupCodes() {
+  const invalidate = useInvalidateSecurity()
+  return useMutation({
+    mutationFn: (password: string) =>
+      api<{ backupCodes: string[] }>("/security/two-factor/backup-codes", {
+        method: "POST",
+        body: { password },
+      }),
+    onSuccess: invalidate,
+  })
+}
+
+// Team
+
+export const useTeam = () =>
+  useQuery({
+    queryKey: ["team"],
+    queryFn: () => api<{ team: Team | null }>("/teams/mine"),
+  })
+
+/** Team changes come back as the new team (or nothing after leaving). */
+function useTeamMutation<V>(fn: (v: V) => Promise<Team | null | void>) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: (team) => {
+      qc.setQueryData(["team"], { team: team ?? null })
+      qc.invalidateQueries({ queryKey: ["me"] })
+    },
+  })
+}
+
+export const useCreateTeam = () =>
+  useTeamMutation((name: string) =>
+    api<Team>("/teams", { method: "POST", body: { name } })
+  )
+
+export const useJoinTeam = () =>
+  useTeamMutation((code: string) =>
+    api<Team>("/teams/join", { method: "POST", body: { code } })
+  )
+
+export const useLeaveTeam = () =>
+  useTeamMutation(() => api<void>("/teams/leave", { method: "POST" }))
+
+export const useRenameTeam = () =>
+  useTeamMutation((name: string) =>
+    api<Team>("/teams/mine", { method: "PATCH", body: { name } })
+  )
+
+export const useNewInviteCode = () =>
+  useTeamMutation(() => api<Team>("/teams/invite-code", { method: "POST" }))
+
+export const useRemoveMember = () =>
+  useTeamMutation((id: string) =>
+    api<Team>(`/teams/members/${id}`, { method: "DELETE" })
+  )

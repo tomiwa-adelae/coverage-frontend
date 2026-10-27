@@ -23,7 +23,13 @@ export function BrandMark({ className }: { className?: string }) {
 }
 
 /** Mark + "Coverage" with the bank as a caption. */
-export function BrandLockup({ className }: { className?: string }) {
+export function BrandLockup({
+  className,
+  captionClassName,
+}: {
+  className?: string
+  captionClassName?: string
+}) {
   return (
     <span className={cn("flex items-center gap-2.5", className)}>
       <BrandMark />
@@ -31,7 +37,12 @@ export function BrandLockup({ className }: { className?: string }) {
         <span className="block text-[17px] font-semibold tracking-tight">
           Coverage
         </span>
-        <span className="mt-1 block text-[11px] font-medium tracking-wide opacity-65">
+        <span
+          className={cn(
+            "mt-1 block text-[11px] font-medium tracking-wide opacity-65",
+            captionClassName
+          )}
+        >
           ProvidusUnity Bank
         </span>
       </span>
