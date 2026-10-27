@@ -30,10 +30,13 @@ const VisitMap = dynamic(
 /** Google Maps allows a destination plus up to 9 stops in a shared link. */
 const MAX_STOPS = 10
 
+// The country keeps Google from picking a same-named place elsewhere.
 const placeOf = (p: Prospect) =>
   p.latitude !== null && p.longitude !== null
     ? `${p.latitude},${p.longitude}`
-    : [p.address, p.area].filter(Boolean).join(", ")
+    : p.address || p.area
+      ? [p.address, p.area, "Nigeria"].filter(Boolean).join(", ")
+      : ""
 
 function routeUrl(stops: Prospect[]) {
   const places = stops.map(placeOf).filter(Boolean)

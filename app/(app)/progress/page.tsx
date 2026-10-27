@@ -190,7 +190,9 @@ export default function ProgressPage() {
               <span className="font-medium">
                 {t.tier ? `Tier ${t.tier}` : "Not rated"}
               </span>
-              <span className="text-muted-foreground">{t.count} prospects</span>
+              <span className="text-muted-foreground">
+                {t.count} prospect{t.count === 1 ? "" : "s"}
+              </span>
               <span className="w-24 text-right font-semibold tabular-nums">
                 {naira(t.potential)}
               </span>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import {
   IconArrowRight,
@@ -8,7 +8,7 @@ import {
   IconCalendar,
 } from "@tabler/icons-react"
 import { cn } from "@/lib/utils"
-import { localToday, naira, relativeDay } from "@/lib/format"
+import { localToday, naira, nairaShort, relativeDay } from "@/lib/format"
 import { prospectsKey, useMoveStage, useProspects } from "@/lib/queries"
 import {
   STAGES,
@@ -54,6 +54,8 @@ export default function PipelinePage() {
   const [over, setOver] = useState<Stage | null>(null)
   const [tab, setTab] = useState<Stage | null>(null)
   const desktop = useMediaQuery("(min-width: 768px)")
+  // Tablets and landscape phones get the board but can't drag or hover.
+  const touch = useMediaQuery("(hover: none)")
   const today = localToday()
 
   function moveTo(p: Prospect, stage: Stage, undoable = true) {
@@ -109,17 +111,20 @@ export default function PipelinePage() {
 
   return (
     <>
-      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 max-md:[&>header]:mb-4">
         <PageHeader
           title="Pipeline"
+          // Phones need the room for cards; the buttons explain themselves.
           description={
-            desktop
-              ? "Drag a card to move it to the next stage."
-              : "Pick a stage, then tap a card’s arrow to move it forward."
+            !desktop
+              ? undefined
+              : touch
+                ? "Tap the arrows on a card to move it to another stage."
+                : "Drag a card to move it to the next stage."
           }
         />
         <div
-          className="flex gap-1 rounded-lg border bg-card p-1"
+          className="flex gap-0.5 rounded-lg border bg-card p-1 sm:gap-1"
           role="group"
           aria-label="Tier"
         >
@@ -130,7 +135,7 @@ export default function PipelinePage() {
               aria-pressed={tier === t}
               onClick={() => setTier(t)}
               className={cn(
-                "rounded-md px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground",
+                "rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground sm:px-2.5",
                 tier === t &&
                   "bg-primary text-primary-foreground hover:text-primary-foreground"
               )}
@@ -290,7 +295,7 @@ function Card({
           tier={p.tier}
           className="size-9 text-xs"
         />
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 [@media(hover:none)]:pr-6">
           <p className="truncate text-sm font-medium">{p.name}</p>
           {p.company && (
             <p className="truncate text-xs text-muted-foreground">
@@ -325,7 +330,7 @@ function Card({
             variant="ghost"
             size="icon-xs"
             aria-label={`Move ${p.name}`}
-            className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-popup-open:opacity-100"
+            className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-popup-open:opacity-100 [@media(hover:none)]:opacity-100"
           >
             <IconArrowsMove />
           </Button>
@@ -387,54 +392,91 @@ function MobileBoard({
 }) {
   const items = byStage[active]
   const value = columnValue(active, items)
+  const tabs = useRef<HTMLDivElement>(null)
+  const swipe = useRef<{ x: number; y: number } | null>(null)
+
+  // Keep the chosen stage in view; most of the strip is off-screen on a phone.
+  useEffect(() => {
+    const list = tabs.current
+    const tab = list?.querySelector<HTMLElement>('[aria-selected="true"]')
+    if (!list || !tab) return
+    list.scrollTo({
+      left: tab.offsetLeft - (list.clientWidth - tab.offsetWidth) / 2,
+      behavior: "smooth",
+    })
+  }, [active])
+
+  /** Swipe left or right on the list for the next or previous stage. */
+  function endSwipe(e: React.TouchEvent) {
+    const start = swipe.current
+    swipe.current = null
+    if (!start) return
+    const dx = e.changedTouches[0].clientX - start.x
+    const dy = e.changedTouches[0].clientY - start.y
+    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return
+    const next = STAGES[STAGES.indexOf(active) + (dx < 0 ? 1 : -1)]
+    if (next) onSelect(next)
+  }
+
   return (
     <>
-      <div
-        role="tablist"
-        aria-label="Stage"
-        className="-mx-4 mt-4 flex snap-x scroll-px-4 [scrollbar-width:none] gap-2 overflow-x-auto px-4 pb-1 [&::-webkit-scrollbar]:hidden"
-      >
-        {STAGES.map((s) => (
-          <button
-            key={s}
-            type="button"
-            role="tab"
-            aria-selected={s === active}
-            onClick={() => onSelect(s)}
-            className={cn(
-              "flex shrink-0 snap-start items-center gap-1.5 rounded-full border bg-card px-3 py-1.5 text-sm font-medium whitespace-nowrap transition-colors",
-              s === active &&
-                "border-primary bg-primary text-primary-foreground dark:border-brand dark:bg-brand dark:text-brand-foreground"
-            )}
-          >
-            {STAGE_LABEL[s]}
-            <span
+      {/* Pinned under the app header so long stages don't lose their tabs. */}
+      <div className="sticky top-[calc(max(0.75rem,env(safe-area-inset-top))+3.0625rem)] z-10 -mx-4 bg-background/95 px-4 pt-1 pb-2 backdrop-blur">
+        <div
+          ref={tabs}
+          role="tablist"
+          aria-label="Stage"
+          className="-mx-4 flex scroll-px-4 [scrollbar-width:none] gap-2 overflow-x-auto [mask-image:linear-gradient(to_right,#000_calc(100%-2rem),transparent)] px-4 [&::-webkit-scrollbar]:hidden"
+        >
+          {STAGES.map((s) => (
+            <button
+              key={s}
+              type="button"
+              role="tab"
+              aria-selected={s === active}
+              onClick={() => onSelect(s)}
               className={cn(
-                "rounded-full bg-muted px-1.5 text-xs text-muted-foreground tabular-nums",
-                s === active && "bg-white/20 text-current"
+                "flex shrink-0 items-center gap-1.5 rounded-full border bg-card px-3 py-1.5 text-sm font-medium whitespace-nowrap transition-colors",
+                s === active &&
+                  "border-primary bg-primary text-primary-foreground dark:border-brand dark:bg-brand dark:text-brand-foreground"
               )}
             >
-              {loaded ? byStage[s].length : "–"}
+              {STAGE_LABEL[s]}
+              <span
+                className={cn(
+                  "rounded-full bg-muted px-1.5 text-xs text-muted-foreground tabular-nums",
+                  s === active && "bg-white/20 text-current"
+                )}
+              >
+                {loaded ? byStage[s].length : "–"}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-2 flex items-baseline justify-between gap-2">
+          <h2 className="text-sm font-semibold">{STAGE_LABEL[active]}</h2>
+          {value > 0 && (
+            <span
+              className={cn(
+                "text-sm font-semibold tabular-nums",
+                WON.includes(active) ? "text-tier-a" : "text-muted-foreground"
+              )}
+            >
+              {naira(value)}
             </span>
-          </button>
-        ))}
+          )}
+        </div>
       </div>
 
-      <div className="mt-4 flex items-baseline justify-between gap-2">
-        <h2 className="font-semibold">{STAGE_LABEL[active]}</h2>
-        {value > 0 && (
-          <span
-            className={cn(
-              "text-sm font-semibold tabular-nums",
-              WON.includes(active) ? "text-tier-a" : "text-muted-foreground"
-            )}
-          >
-            {naira(value)}
-          </span>
-        )}
-      </div>
-
-      <ol className="mt-2 grid gap-2">
+      <ol
+        className="mt-1 grid min-h-[50svh] content-start gap-2"
+        onTouchStart={(e) => {
+          const t = e.touches[0]
+          swipe.current = { x: t.clientX, y: t.clientY }
+        }}
+        onTouchEnd={endSwipe}
+      >
         {!loaded ? (
           <>
             <Skeleton className="h-24" />
@@ -471,7 +513,7 @@ function MobileBoard({
                   <span className="shrink-0 text-right text-xs">
                     {money ? (
                       <span className="block font-semibold tabular-nums">
-                        {naira(money)}
+                        {nairaShort(money)}
                       </span>
                     ) : null}
                     {p.nextDate && (

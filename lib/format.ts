@@ -89,7 +89,9 @@ export function nairaShort(n: number | null | undefined) {
   const v = Math.round(n ?? 0)
   const abs = Math.abs(v)
   const fmt = (x: number) =>
-    x.toLocaleString("en-NG", { maximumFractionDigits: x < 10 ? 1 : 0 })
+    x.toLocaleString("en-NG", {
+      maximumFractionDigits: Math.abs(x) < 100 ? 1 : 0,
+    })
   if (abs >= 1e9) return `₦${fmt(v / 1e9)}bn`
   if (abs >= 1e6) return `₦${fmt(v / 1e6)}m`
   if (abs >= 1e3) return `₦${fmt(v / 1e3)}k`

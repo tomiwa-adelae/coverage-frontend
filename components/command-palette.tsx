@@ -8,6 +8,7 @@ import {
   useState,
 } from "react"
 import { useRouter } from "next/navigation"
+import { defaultFilter } from "cmdk"
 import {
   IconBolt,
   IconCash,
@@ -170,6 +171,26 @@ export function CommandPaletteProvider({
   )
 }
 
+const ID = / [0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** Digits only, with +234 written as a leading 0: "+234 803 123" -> "0803123". */
+const localDigits = (s: string) => {
+  const d = s.replace(/\D/g, "")
+  return d.startsWith("234") ? `0${d.slice(3)}` : d
+}
+
+/**
+ * Numbers match the phone exactly (fuzzy matching finds "0803" scattered
+ * across any number); everything else uses the usual fuzzy search.
+ */
+function search(value: string, query: string, keywords?: string[]) {
+  const digits = localDigits(query)
+  if (/^[+\d\s().-]+$/.test(query.trim()) && digits.length >= 3)
+    return keywords?.some((k) => k.includes(digits)) ? 1 : 0
+  // The id only keeps values unique; its letters shouldn't match anything.
+  return defaultFilter(value.replace(ID, ""), query, keywords)
+}
+
 function Palette({ onDone }: { onDone: () => void }) {
   const router = useRouter()
   const openProspect = useOpenProspect()
@@ -182,7 +203,7 @@ function Palette({ onDone }: { onDone: () => void }) {
   }
 
   return (
-    <Command>
+    <Command filter={search}>
       <CommandInput placeholder="Search prospects, phone numbers, pages…" />
       <CommandList className="max-h-[min(60dvh,26rem)]">
         <CommandEmpty>Nothing found.</CommandEmpty>
@@ -196,7 +217,8 @@ function Palette({ onDone }: { onDone: () => void }) {
             {prospects.map((p) => (
               <CommandItem
                 key={p.id}
-                value={`${p.name} ${p.company ?? ""} ${p.phone ?? ""} ${p.email ?? ""} ${p.group ?? ""} ${p.area ?? ""} ${p.id}`}
+                value={`${p.name} ${p.company ?? ""} ${p.email ?? ""} ${p.group ?? ""} ${p.area ?? ""} ${p.id}`}
+                keywords={p.phone ? [localDigits(p.phone)] : undefined}
                 onSelect={run(() => openProspect(p.id))}
               >
                 <ProspectAvatar name={p.name} tier={p.tier} size="sm" />
