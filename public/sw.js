@@ -32,6 +32,60 @@ self.addEventListener("activate", (event) => {
   )
 })
 
+// A voice note shared from another app (WhatsApp, Recorder) arrives here as a
+// form post. It's saved like an unsent recording and the debrief page offers to
+// send it. Android only; see share_target in app/manifest.ts.
+self.addEventListener("fetch", (event) => {
+  const url = new URL(event.request.url)
+  if (event.request.method !== "POST" || url.pathname !== "/share-target") return
+  event.respondWith(receiveShare(event.request))
+})
+
+async function receiveShare(req) {
+  const to = (q) => Response.redirect(`/debrief?shared=${q}`, 303)
+  try {
+    const form = await req.formData()
+    const file = form.getAll("audio").find((f) => f instanceof File && f.size)
+    if (!file) return to("none")
+    const db = await new Promise((resolve, reject) => {
+      // Same database as lib/debrief-audio.ts.
+      const open = indexedDB.open("coverage-debrief", 1)
+      open.onupgradeneeded = () => open.result.createObjectStore("recordings")
+      open.onsuccess = () => resolve(open.result)
+      open.onerror = () => reject(open.error)
+    })
+    const run = (mode, fn) =>
+      new Promise((resolve, reject) => {
+        const t = db.transaction("recordings", mode)
+        const r = fn(t.objectStore("recordings"))
+        t.oncomplete = () => resolve(r.result)
+        t.onerror = () => reject(t.error)
+      })
+    const current = await run("readonly", (s) => s.get("pending"))
+    // Never replace a recording of their own that hasn't been sent yet.
+    if (current?.chunks?.length && !current.sent) {
+      db.close()
+      return to("busy")
+    }
+    // WhatsApp voice notes are Opus in an Ogg file, sometimes labelled oddly.
+    const type = (file.type || "").split(";")[0]
+    const mime =
+      !type || type === "audio/opus" || /\.opus$/i.test(file.name)
+        ? "audio/ogg"
+        : type
+    await run("readwrite", (s) =>
+      s.put(
+        { chunks: [file], mime, startedAt: Date.now(), durationMs: 0, shared: true },
+        "pending"
+      )
+    )
+    db.close()
+    return to("1")
+  } catch {
+    return to("failed")
+  }
+}
+
 self.addEventListener("fetch", (event) => {
   const req = event.request
   if (DEV || req.method !== "GET") return

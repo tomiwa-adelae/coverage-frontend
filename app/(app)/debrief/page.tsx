@@ -93,6 +93,20 @@ function Start() {
     | null
   >(null)
 
+  // Back from sharing a voice note in from another app (public/sw.js).
+  const shared = params.get("shared")
+  useEffect(() => {
+    if (!shared) return
+    const problem: Record<string, string> = {
+      busy: "Send or delete the recording below first, then share the voice note again.",
+      none: "That share didn’t include a voice note.",
+      failed: "We couldn’t save that voice note. Try sharing it again.",
+      retry: "Coverage was still setting up. Share the voice note again.",
+    }
+    if (problem[shared]) toast.error(problem[shared])
+    router.replace("/debrief")
+  }, [shared, router])
+
   // A recording that never reached the server (closed tab, no signal).
   useEffect(() => {
     let live = true
@@ -184,12 +198,16 @@ function Start() {
             <p className="mt-3 font-medium">
               {upload?.state === "failed"
                 ? "Your recording didn’t send"
-                : "You have a recording that wasn’t sent"}
+                : pending!.shared
+                  ? "Voice note ready to send"
+                  : "You have a recording that wasn’t sent"}
             </p>
             <p className="mt-1 text-sm text-muted-foreground">
               {upload?.state === "failed"
                 ? upload.error
-                : `${mmss(pending!.durationMs)} recorded ${timeAgo(new Date(pending!.startedAt).toISOString())}. It’s saved on this device.`}
+                : pending!.shared
+                  ? `Shared ${timeAgo(new Date(pending!.startedAt).toISOString())}. Send it and Coverage will read who you spoke with.`
+                  : `${mmss(pending!.durationMs)} recorded ${timeAgo(new Date(pending!.startedAt).toISOString())}. It’s saved on this device.`}
             </p>
             <div className="mt-4 flex justify-center gap-2">
               <Button variant="outline" onClick={discard}>

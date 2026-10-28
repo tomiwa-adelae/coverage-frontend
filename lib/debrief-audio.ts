@@ -39,6 +39,8 @@ export interface PendingRecording {
    * transcription can be retried without recording again.
    */
   sent?: boolean
+  /** Shared in from another app, so the length isn't known. */
+  shared?: boolean
 }
 
 const DB = "coverage-debrief"

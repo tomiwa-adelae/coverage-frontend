@@ -23,6 +23,29 @@ export default function manifest(): MetadataRoute.Manifest {
         purpose: "maskable",
       },
     ],
+    // Share a voice note (e.g. from WhatsApp) straight into a debrief. The
+    // service worker handles the post; see receiveShare in public/sw.js.
+    share_target: {
+      action: "/share-target",
+      method: "POST",
+      enctype: "multipart/form-data",
+      params: {
+        files: [
+          {
+            name: "audio",
+            accept: [
+              "audio/*",
+              ".opus",
+              ".ogg",
+              ".m4a",
+              ".mp3",
+              ".aac",
+              ".wav",
+            ],
+          },
+        ],
+      },
+    },
     shortcuts: [
       { name: "Today", url: "/" },
       { name: "Debrief", url: "/debrief" },
