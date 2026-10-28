@@ -23,6 +23,7 @@ import {
   loadPending,
   MAX_RECORDING_MS,
   pendingBlob,
+  savePending,
   uploadRecording,
   type PendingRecording,
 } from "@/lib/debrief-audio"
@@ -86,7 +87,14 @@ function Start() {
   // A recording that never reached the server (closed tab, no signal).
   useEffect(() => {
     let live = true
-    loadPending().then((p) => live && setPending(p))
+    loadPending().then((p) => {
+      // Sent ones are only kept for retrying a failed transcription.
+      if (p?.sent) {
+        if (Date.now() - p.startedAt > 3 * 86_400_000) void clearPending()
+        return
+      }
+      if (live) setPending(p)
+    })
     return () => {
       live = false
     }
@@ -99,7 +107,7 @@ function Start() {
       const d = await uploadRecording(pendingBlob(rec), (progress) =>
         setUpload({ state: "sending", progress })
       )
-      await clearPending()
+      await savePending({ ...rec, debriefId: d.id, sent: true })
       router.replace(`/debrief?id=${d.id}`)
     } catch (e) {
       setUpload({
@@ -369,6 +377,15 @@ function RecentDebriefs() {
 function DebriefView({ id }: { id: string }) {
   const { data: d, error } = useDebrief(id)
   const { data: today } = useToday()
+  const heard = !!d?.transcript
+
+  // The transcript is back, so the copy kept on the device isn't needed.
+  useEffect(() => {
+    if (heard)
+      loadPending().then((p) => {
+        if (p?.debriefId === id) void clearPending()
+      })
+  }, [heard, id])
 
   if (error)
     return (
@@ -425,13 +442,59 @@ function Processing({ d }: { d: Debrief }) {
 }
 
 function Failed({ d }: { d: Debrief }) {
+  const router = useRouter()
+  const [saved, setSaved] = useState<PendingRecording | null>(null)
+  const [progress, setProgress] = useState<number | null>(null)
+
+  // The recording is still on this device if transcription failed.
+  useEffect(() => {
+    if (d.transcript) return
+    let live = true
+    loadPending().then((p) => {
+      if (live && p?.debriefId === d.id) setSaved(p)
+    })
+    return () => {
+      live = false
+    }
+  }, [d.id, d.transcript])
+
+  async function retry() {
+    if (!saved) return
+    setProgress(0)
+    try {
+      const next = await uploadRecording(pendingBlob(saved), setProgress)
+      await savePending({ ...saved, debriefId: next.id, sent: true })
+      router.replace(`/debrief?id=${next.id}`)
+    } catch (e) {
+      setProgress(null)
+      toast.error((e as Error).message)
+    }
+  }
+
   return (
     <div className="space-y-4">
       <Notice
         tone="error"
         title="That didn’t work"
-        body={d.error ?? "Something went wrong reading your debrief."}
-        action={!d.transcript && <NewButton label="Record again" />}
+        body={
+          (d.error ?? "Something went wrong reading your debrief.") +
+          (saved ? " Your recording is still on this device." : "")
+        }
+        action={
+          !d.transcript &&
+          (saved ? (
+            <div className="flex gap-2">
+              <NewButton label="Record again" variant="outline" />
+              <Button onClick={retry} disabled={progress !== null}>
+                {progress === null
+                  ? "Try again"
+                  : `Sending… ${Math.round(progress * 100)}%`}
+              </Button>
+            </div>
+          ) : (
+            <NewButton label="Record again" />
+          ))
+        }
       />
       {d.transcript && <Transcript d={d} open />}
     </div>
@@ -536,9 +599,19 @@ function Applied({ d }: { d: Debrief }) {
   )
 }
 
-function NewButton({ label = "New debrief" }: { label?: string }) {
+function NewButton({
+  label = "New debrief",
+  variant,
+}: {
+  label?: string
+  variant?: "outline"
+}) {
   return (
-    <Button nativeButton={false} render={<Link href="/debrief" />}>
+    <Button
+      variant={variant}
+      nativeButton={false}
+      render={<Link href="/debrief" />}
+    >
       <IconMicrophone /> {label}
     </Button>
   )

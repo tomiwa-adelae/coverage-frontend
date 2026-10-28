@@ -34,6 +34,11 @@ export interface PendingRecording {
   durationMs: number
   /** Set once the server has it, so a retry doesn't upload twice. */
   debriefId?: string
+  /**
+   * Sent and being read. Kept until the transcript is back, so a failed
+   * transcription can be retried without recording again.
+   */
+  sent?: boolean
 }
 
 const DB = "coverage-debrief"
