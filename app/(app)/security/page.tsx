@@ -38,6 +38,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
+import { AppLockSettings } from "@/components/app-lock-settings"
 
 export default function SecurityPage() {
   const { data, isError } = useSecurity()
@@ -59,6 +60,7 @@ export default function SecurityPage() {
       ) : (
         <>
           <TwoStep data={data} />
+          <AppLockSettings />
           <Devices sessions={data.sessions} />
           <ActivityLog />
         </>

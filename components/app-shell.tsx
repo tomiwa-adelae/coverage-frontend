@@ -39,6 +39,7 @@ import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 import { ProspectPanel, useOpenProspect } from "@/components/prospect-sheet"
 import { QuickLogProvider, useQuickLogDialog } from "@/components/quick-log"
+import { AppLock } from "@/components/app-lock"
 import { CallTrackerProvider } from "@/components/call-tracker"
 import { BrandLockup } from "@/components/brand"
 import { GoalWatcher } from "@/components/goal-card"
@@ -212,6 +213,7 @@ function Shell({ children }: { children: React.ReactNode }) {
             <GoalWatcher />
             <PushSync />
             <QuickLogFromUrl />
+            <AppLock />
             <div className="min-h-svh lg:grid lg:grid-cols-[15.5rem_1fr] print:block">
               <Sidebar onAdd={() => addProspect()} />
 
