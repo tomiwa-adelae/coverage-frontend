@@ -42,15 +42,20 @@ function fallbackMessage(status: number) {
 /** JSON fetch against the Nest API. Retries once after refreshing an expired session. */
 export async function api<T>(
   path: string,
-  init: { method?: string; body?: unknown } = {},
+  /** `raw` sends bytes as-is (audio uploads) instead of JSON. */
+  init: { method?: string; body?: unknown; raw?: Blob } = {},
   retry = true
 ): Promise<T> {
   let res: Response
   try {
     res = await fetch(`/api${path}`, {
       method: init.method ?? "GET",
-      headers: init.body ? { "Content-Type": "application/json" } : undefined,
-      body: init.body ? JSON.stringify(init.body) : undefined,
+      headers: init.raw
+        ? { "Content-Type": init.raw.type || "application/octet-stream" }
+        : init.body
+          ? { "Content-Type": "application/json" }
+          : undefined,
+      body: init.raw ?? (init.body ? JSON.stringify(init.body) : undefined),
     })
   } catch {
     throw new ApiError(

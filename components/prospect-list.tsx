@@ -11,7 +11,7 @@ import {
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { telUrl, whatsappUrl } from "@/lib/contact"
-import { addDays, naira, niceDate, relativeDay, timeAgo } from "@/lib/format"
+import { addDays, clock, naira, niceDate, relativeDay, timeAgo } from "@/lib/format"
 import { usePatchProspect } from "@/lib/queries"
 import { STAGE_LABEL, type Prospect } from "@/lib/types"
 import { Button } from "@/components/ui/button"
@@ -32,9 +32,11 @@ import { useTrackCall } from "@/components/call-tracker"
 
 export function DueChip({
   date,
+  time,
   today,
 }: {
   date: string | null
+  time?: string | null
   today: string
 }) {
   if (!date)
@@ -52,6 +54,7 @@ export function DueChip({
       )}
     >
       {relativeDay(date, today)}
+      {time && ` · ${clock(time)}`}
     </span>
   )
 }
@@ -150,7 +153,7 @@ function ProspectRow({
 
       <div className="pointer-events-none flex flex-col items-end gap-1">
         {trailing === "date" ? (
-          <DueChip date={p.nextDate} today={today} />
+          <DueChip date={p.nextDate} time={p.nextTime} today={today} />
         ) : (
           <span className="text-xs whitespace-nowrap text-muted-foreground">
             {STAGE_LABEL[p.stage]}

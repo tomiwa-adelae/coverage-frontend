@@ -6,7 +6,9 @@ export function PageSection({
   hint,
   children,
   className,
+  id,
 }: {
+  id?: string
   title: string
   count?: number
   hint?: string
@@ -14,7 +16,7 @@ export function PageSection({
   className?: string
 }) {
   return (
-    <section className={cn("mt-7 first:mt-0", className)}>
+    <section id={id} className={cn("mt-7 scroll-mt-20 first:mt-0", className)}>
       <h2 className="flex items-center gap-2 text-sm font-semibold">
         {title}
         {count !== undefined && (

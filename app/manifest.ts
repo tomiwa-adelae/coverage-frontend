@@ -25,6 +25,7 @@ export default function manifest(): MetadataRoute.Manifest {
     ],
     shortcuts: [
       { name: "Today", url: "/" },
+      { name: "Debrief", url: "/debrief" },
       { name: "Add prospect", url: "/prospects?p=new" },
       { name: "Balances", url: "/balances" },
     ],

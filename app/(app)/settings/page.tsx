@@ -25,6 +25,8 @@ import {
   currentSubscription,
   disablePush,
   enablePush,
+  inAppBrowser,
+  isIos,
   needsInstallForPush,
   pushSupported,
 } from "@/lib/push"
@@ -340,6 +342,17 @@ function useSaveSetting() {
 
 const HOURS = [5, 6, 7, 8, 9, 10, 11]
 
+const REMINDER_LEADS: [number, string][] = [
+  [-1, "Off"],
+  [0, "At the time"],
+  [5, "5 min before"],
+  [10, "10 min before"],
+  [15, "15 min before"],
+  [30, "30 min before"],
+  [60, "1 hour before"],
+  [120, "2 hours before"],
+]
+
 function Notifications({ me }: { me: Me }) {
   const save = useSaveSetting()
   const { data: config } = useNotificationConfig()
@@ -347,11 +360,17 @@ function Notifications({ me }: { me: Me }) {
   const support = useSyncExternalStore(
     () => () => {},
     () =>
-      pushSupported()
-        ? "ok"
+      inAppBrowser()
+        ? "inapp"
         : needsInstallForPush()
           ? "install"
-          : "unsupported",
+          : !pushSupported()
+            ? isIos()
+              ? "old-ios"
+              : "unsupported"
+            : Notification.permission === "denied"
+              ? "denied"
+              : "ok",
     () => "loading"
   )
   const [subscribed, setSubscribed] = useState<boolean | null>(null)
@@ -392,7 +411,14 @@ function Notifications({ me }: { me: Me }) {
   async function test() {
     try {
       await api("/notifications/test", { method: "POST" })
-      toast.success("Test sent. It should arrive in a few seconds.")
+      toast.success("Test sent. It should arrive in a few seconds.", {
+        description: isIos()
+          ? "Nothing? Check Settings › Notifications › Coverage, and that Focus or Do Not Disturb is off."
+          : /android/i.test(navigator.userAgent)
+            ? "Nothing? Check your phone’s notification settings for your browser, and battery saver."
+            : "Nothing? Check your computer allows notifications from your browser (and Focus or Do Not Disturb is off).",
+        duration: 10_000,
+      })
     } catch (e) {
       toast.error((e as Error).message)
     }
@@ -400,8 +426,9 @@ function Notifications({ me }: { me: Me }) {
 
   return (
     <PageSection
+      id="notifications"
       title="Reminders"
-      hint="A morning list of who to contact, sent on working days."
+      hint="A morning list of who to contact, and a nudge before booked follow-ups."
     >
       <div className="divide-y rounded-xl border bg-card shadow-xs">
         <SettingRow
@@ -413,10 +440,16 @@ function Notifications({ me }: { me: Me }) {
               : !config.pushKey
                 ? "Not set up on the server yet."
                 : device === "install"
-                  ? "On iPhone, first tap Share, then Add to Home Screen, and open Coverage from there."
-                  : device === "unsupported"
-                    ? "This browser doesn't support notifications."
-                    : device === "on"
+                  ? "On iPhone and iPad: tap Share, then Add to Home Screen, then open Coverage from your home screen and turn this on there."
+                  : device === "inapp"
+                    ? "This page is open inside another app. Open it in Chrome or Safari to get notifications."
+                    : device === "old-ios"
+                      ? "Update to iOS 16.4 or later to get notifications."
+                      : device === "denied"
+                        ? "Notifications are blocked for this site. Allow them in your browser’s site settings (the icon next to the address), then reload."
+                        : device === "unsupported"
+                          ? "This browser doesn't support notifications. Try Chrome, Edge, Firefox or Safari."
+                          : device === "on"
                       ? "This device will get reminders."
                       : "Turn on to get reminders here."
           }
@@ -434,12 +467,31 @@ function Notifications({ me }: { me: Me }) {
                 busy ||
                 !config?.pushKey ||
                 device === "loading" ||
-                device === "unsupported" ||
-                device === "install"
+                device !== "on" && device !== "off"
               }
               onCheckedChange={togglePush}
             />
           </div>
+        </SettingRow>
+        <SettingRow
+          id="reminder-lead"
+          title="Follow-up reminders"
+          body="For follow-ups with a time, on devices with notifications on."
+        >
+          <NativeSelect
+            id="reminder-lead"
+            value={String(me.reminderLead)}
+            onChange={(e) =>
+              save({ reminderLead: Number(e.target.value) }, "Reminders saved")
+            }
+            className="w-36"
+          >
+            {REMINDER_LEADS.map(([v, label]) => (
+              <NativeSelectOption key={v} value={v}>
+                {label}
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
         </SettingRow>
         <SettingRow
           id="digest-push"

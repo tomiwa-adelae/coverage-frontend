@@ -26,13 +26,14 @@ import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { telUrl, whatsappUrl } from "@/lib/contact"
 import { downloadIcs, googleCalendarUrl } from "@/lib/calendar"
-import { localToday, naira, niceDate, relativeDay } from "@/lib/format"
+import { clock, localToday, naira, niceDate, relativeDay } from "@/lib/format"
 import { showFormError } from "@/lib/forms"
 import {
   useAiStatus,
   useCreateProspect,
   useDeleteActivity,
   useDeleteProspect,
+  useMe,
   useProspect,
   useProspectsMeta,
   useUpdateProspect,
@@ -558,6 +559,7 @@ function NextStepSummary({
           )}
         >
           {relativeDay(p.nextDate, today)}
+          {p.nextTime && `, ${clock(p.nextTime)}`}
         </span>
       )}
       {p.nextDate && live && <AddToCalendar prospect={p} date={p.nextDate} />}
@@ -572,9 +574,12 @@ function AddToCalendar({
   prospect: ProspectDetail
   date: string
 }) {
+  const { data: me } = useMe()
   const event = {
     title: `${p.nextAction || "Follow up"}: ${p.name}`,
     date,
+    time: p.nextTime,
+    alarmMinutes: me?.reminderLead,
     details: [
       p.company,
       p.phone && `Phone: ${p.phone}`,

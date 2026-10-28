@@ -17,6 +17,7 @@ import {
   IconLayoutKanban,
   IconMap2,
   IconMessageDots,
+  IconMicrophone,
   IconPlus,
   IconReportAnalytics,
   IconRoute,
@@ -51,6 +52,12 @@ export const PAGES: {
   keywords?: string
 }[] = [
   { href: "/", label: "Today", icon: IconSun, keywords: "home due calls" },
+  {
+    href: "/debrief",
+    label: "Debrief",
+    icon: IconMicrophone,
+    keywords: "record voice day summary speak",
+  },
   {
     href: "/prospects",
     label: "Prospects",

@@ -163,6 +163,8 @@ export interface Prospect {
   funded: number | null
   nextAction: string | null
   nextDate: string | null
+  /** Local "HH:MM" on nextDate; set means a timed reminder. */
+  nextTime: string | null
   notes: string | null
   lastContactAt: string | null
   stageChangedAt: string
@@ -183,6 +185,7 @@ export interface Prospect {
   cadenceId: string | null
   cadenceStep: number | null
   cadenceStart: string | null
+  remindedFor: string | null
   createdAt: string
   updatedAt: string
 }
@@ -223,6 +226,7 @@ export type ProspectInput = Partial<
     | "consentAt"
     | "cadenceStep"
     | "cadenceStart"
+    | "remindedFor"
   >
 >
 
@@ -246,6 +250,8 @@ export interface Me {
   digestHour: number
   managerEmail: string | null
   weeklyReport: boolean
+  /** Minutes before a timed follow-up to remind; -1 is off. */
+  reminderLead: number
   twoFactorEnabled: boolean
   teamId: string | null
   teamRole: "MANAGER" | "MEMBER" | null
@@ -272,6 +278,8 @@ export interface TodayData {
   focus: (Prospect & { score: number })[]
   overdue: Prospect[]
   dueToday: Prospect[]
+  /** Today's follow-ups with a time, in time order. */
+  appointments: Prospect[]
   noNextStep: Prospect[]
   upcoming: Prospect[]
   unrated: Prospect[]
@@ -496,3 +504,87 @@ export interface Template {
 }
 
 export type TemplateInput = Pick<Template, "name" | "body">
+
+export type DebriefStatus =
+  | "UPLOADING"
+  | "PROCESSING"
+  | "READY"
+  | "FAILED"
+  | "APPLIED"
+
+/** One person the assistant picked out of a debrief, for review. */
+export interface DebriefSuggestion {
+  key: string
+  mention: string
+  match: "EXISTING" | "NEW" | "UNSURE"
+  prospectId: string | null
+  candidates: { id: string; name: string; company: string | null }[]
+  newProspect: { name: string; company: string; phone: string; area: string }
+  contact: {
+    type: Touch
+    date: string
+    outcome: Outcome | null
+    note: string
+  } | null
+  note: string
+  stage: Stage | null
+  outcomeReason: string
+  potential: number | null
+  funded: number | null
+  tier: Tier | null
+  wantsProducts: Product[]
+  holdsProducts: Product[]
+  referredById: string | null
+  nextAction: string
+  nextDate: string | null
+  nextTime: string | null
+  check: string[]
+}
+
+export interface DebriefApplied {
+  name: string
+  ok: boolean
+  prospectId?: string
+  created?: boolean
+  error?: string
+}
+
+export interface Debrief {
+  id: string
+  status: DebriefStatus
+  /** While PROCESSING */
+  step: "TRANSCRIBING" | "READING" | null
+  transcript: string | null
+  result: { items: DebriefSuggestion[]; other: string[] } | null
+  applied: DebriefApplied[] | null
+  error: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface DebriefSummary {
+  id: string
+  status: DebriefStatus
+  createdAt: string
+  people: number
+  preview: string | null
+}
+
+/** What one reviewed person sends back to be saved. */
+export interface DebriefApplyItem {
+  prospectId?: string
+  newProspect?: { name: string; company?: string; phone?: string; area?: string }
+  contact?: { type: Touch; outcome?: Outcome; note?: string; date: string }
+  note?: string
+  stage?: Stage
+  outcomeReason?: string
+  potential?: number
+  funded?: number
+  tier?: Tier
+  wantsProducts?: Product[]
+  holdsProducts?: Product[]
+  referredById?: string
+  nextAction?: string
+  nextDate?: string
+  nextTime?: string
+}

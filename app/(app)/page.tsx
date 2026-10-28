@@ -8,12 +8,13 @@ import {
   IconCake,
   IconCalendarPlus,
   IconChecks,
+  IconMicrophone,
   IconTrendingDown,
   IconTrendingUp,
 } from "@tabler/icons-react"
 import { cn } from "@/lib/utils"
 import { whatsappUrl } from "@/lib/contact"
-import { longDate, monthName, naira, nairaShort } from "@/lib/format"
+import { clock, longDate, monthName, naira, nairaShort } from "@/lib/format"
 import { STAGE_LABEL, type TodayData } from "@/lib/types"
 import { useMe, useToday } from "@/lib/queries"
 import { GoalCard } from "@/components/goal-card"
@@ -87,8 +88,13 @@ export default function TodayPage() {
 
       {data.birthdays.length > 0 && <Birthdays people={data.birthdays} />}
 
-      {(unrated.length > 0 || noNextStep.length > 0) && (
-        <div className="mt-4 grid gap-2.5 sm:grid-cols-2">
+      <div className="mt-4 grid gap-2.5 sm:grid-cols-2">
+          <Prompt
+            href="/debrief"
+            icon={IconMicrophone}
+            title="Debrief your day"
+            body="Talk it through; Coverage updates each person for you."
+          />
           {unrated.length > 0 && (
             <Prompt
               href="/triage"
@@ -105,7 +111,24 @@ export default function TodayPage() {
               body="Rated prospects with nothing scheduled."
             />
           )}
-        </div>
+      </div>
+
+      {data.appointments.length > 0 && (
+        <PageSection
+          title="Booked today"
+          count={data.appointments.length}
+          hint="You’ll get a reminder before each one."
+          className="mt-8"
+        >
+          <ProspectList
+            items={data.appointments}
+            today={today}
+            actions
+            subtitle={(p) =>
+              `${p.nextTime ? clock(p.nextTime) : ""}${p.nextAction ? ` · ${p.nextAction}` : ""}`
+            }
+          />
+        </PageSection>
       )}
 
       {actNow === 0 ? (

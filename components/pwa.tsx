@@ -1,8 +1,13 @@
 "use client"
 
 import { useEffect, useState, useSyncExternalStore } from "react"
-import { IconDeviceMobileDown, IconWifiOff, IconX } from "@tabler/icons-react"
-import { swUrl } from "@/lib/push"
+import {
+  IconDeviceMobileDown,
+  IconShare2,
+  IconWifiOff,
+  IconX,
+} from "@tabler/icons-react"
+import { inAppBrowser, isIos, isStandalone, swUrl } from "@/lib/push"
 import { Button } from "@/components/ui/button"
 
 interface InstallPrompt extends Event {
@@ -27,6 +32,21 @@ export function PwaSupport() {
     () => true
   )
   const [install, setInstall] = useState<InstallPrompt | null>(null)
+  // iPhone and iPad have no install prompt; explain the Share menu instead,
+  // since notifications only work once Coverage is on the home screen.
+  const iosEligible = useSyncExternalStore(
+    () => () => {},
+    () => {
+      if (!isIos() || isStandalone() || inAppBrowser()) return false
+      try {
+        return !localStorage.getItem(DISMISS_KEY)
+      } catch {
+        return true
+      }
+    },
+    () => false
+  )
+  const [iosHidden, setIosHidden] = useState(false)
 
   useEffect(() => {
     if ("serviceWorker" in navigator)
@@ -53,6 +73,7 @@ export function PwaSupport() {
 
   function dismiss() {
     setInstall(null)
+    setIosHidden(true)
     try {
       localStorage.setItem(DISMISS_KEY, "1")
     } catch {}
@@ -91,6 +112,28 @@ export function PwaSupport() {
           >
             Install
           </Button>
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            aria-label="Not now"
+            onClick={dismiss}
+          >
+            <IconX />
+          </Button>
+        </div>
+      )}
+      {iosEligible && !iosHidden && online && (
+        <div className="fixed inset-x-4 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-40 mx-auto flex max-w-md items-center gap-3 rounded-xl border bg-popover p-3 shadow-lg lg:bottom-4">
+          <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground">
+            <IconDeviceMobileDown className="size-5" />
+          </span>
+          <p className="min-w-0 flex-1 text-sm">
+            <span className="block font-medium">Add Coverage to your Home Screen</span>
+            <span className="block text-xs text-muted-foreground">
+              Tap <IconShare2 className="-mt-0.5 inline size-3.5" /> Share, then
+              Add to Home Screen. Needed for reminders on iPhone.
+            </span>
+          </p>
           <Button
             size="icon-sm"
             variant="ghost"

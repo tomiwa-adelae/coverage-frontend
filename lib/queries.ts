@@ -15,6 +15,9 @@ import type {
   Cadence,
   CadenceStep,
   CardScan,
+  Debrief,
+  DebriefApplyItem,
+  DebriefSummary,
   Draft,
   Me,
   Outcome,
@@ -139,6 +142,7 @@ export interface QuickLogInput {
   outcome?: Outcome
   note?: string
   nextDate?: string
+  nextTime?: string | null
   nextAction?: string
 }
 
@@ -205,6 +209,7 @@ export type MeInput = Partial<
     | "digestHour"
     | "managerEmail"
     | "weeklyReport"
+    | "reminderLead"
   >
 >
 
@@ -656,3 +661,84 @@ export const useRemoveMember = () =>
   useTeamMutation((id: string) =>
     api<Team>(`/teams/members/${id}`, { method: "DELETE" })
   )
+
+// Voice debriefs
+
+export const useDebriefStatus = () =>
+  useQuery({
+    queryKey: ["debriefs", "status"],
+    queryFn: () =>
+      api<{ ai: boolean; voice: boolean; provider: string | null }>(
+        "/debriefs/status"
+      ),
+    staleTime: 5 * 60_000,
+  })
+
+export const useDebriefs = () =>
+  useQuery({
+    queryKey: ["debriefs", "list"],
+    queryFn: () => api<DebriefSummary[]>("/debriefs"),
+  })
+
+/** Polls while the recording is being transcribed and read. */
+export const useDebrief = (id: string | null) =>
+  useQuery({
+    queryKey: ["debriefs", id],
+    queryFn: () => api<Debrief>(`/debriefs/${id}`),
+    enabled: !!id,
+    refetchInterval: (q) =>
+      q.state.data?.status === "PROCESSING" ? 2000 : false,
+    refetchOnWindowFocus: false,
+  })
+
+export function useCreateDebrief() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { text?: string }) =>
+      api<Debrief>("/debriefs", { method: "POST", body }),
+    onSuccess: (d) => {
+      qc.setQueryData(["debriefs", d.id], d)
+      qc.invalidateQueries({ queryKey: ["debriefs", "list"] })
+    },
+  })
+}
+
+export function useRereadDebrief(id: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (transcript: string) =>
+      api<Debrief>(`/debriefs/${id}/reread`, {
+        method: "POST",
+        body: { transcript },
+      }),
+    onSuccess: (d) => qc.setQueryData(["debriefs", id], d),
+    onError,
+  })
+}
+
+export function useApplyDebrief(id: string) {
+  const qc = useQueryClient()
+  const invalidate = useInvalidateAll()
+  return useMutation({
+    mutationFn: (items: DebriefApplyItem[]) =>
+      api<Debrief>(`/debriefs/${id}/apply`, {
+        method: "POST",
+        body: { items },
+      }),
+    onSuccess: (d) => {
+      qc.setQueryData(["debriefs", id], d)
+      invalidate()
+    },
+    onError,
+  })
+}
+
+export function useDeleteDebrief() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) =>
+      api<void>(`/debriefs/${id}`, { method: "DELETE" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["debriefs", "list"] }),
+    onError,
+  })
+}

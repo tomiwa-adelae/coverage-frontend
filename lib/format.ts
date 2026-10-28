@@ -11,6 +11,12 @@ export function addDays(ymd: string, days: number) {
     .join("-")
 }
 
+/** "14:05" -> "2:05 pm" */
+export function clock(hhmm: string) {
+  const [h, m] = hhmm.split(":").map(Number)
+  return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h < 12 ? "am" : "pm"}`
+}
+
 export function localToday() {
   return new Date().toLocaleDateString("en-CA")
 }

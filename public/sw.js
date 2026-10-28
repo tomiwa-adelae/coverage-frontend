@@ -1,7 +1,7 @@
 // Coverage service worker: push notifications and a small offline cache.
 // Prospect data itself stays in the page (persisted query cache), never here.
 
-const VERSION = "coverage-v1"
+const VERSION = "coverage-v2"
 const SHELL = `${VERSION}-shell`
 const STATIC = `${VERSION}-static`
 // Registered as /sw.js?dev=1 by `next dev`, where chunks aren't content-hashed.
@@ -11,7 +11,7 @@ self.addEventListener("install", (event) => {
   event.waitUntil(
     caches
       .open(SHELL)
-      .then((c) => c.addAll(["/", "/icons/icon-192.png"]))
+      .then((c) => c.addAll(["/", "/icons/icon-192.png", "/icons/badge-96.png"]))
       .catch(() => {})
       .then(() => self.skipWaiting())
   )
@@ -99,9 +99,11 @@ self.addEventListener("push", (event) => {
     self.registration.showNotification(title, {
       body: data.body || "",
       icon: "/icons/icon-192.png",
-      badge: "/icons/icon-192.png",
+      // Android shows the badge in the status bar; it must be a white silhouette.
+      badge: "/icons/badge-96.png",
       tag: data.tag,
       renotify: !!data.tag,
+      timestamp: Date.now(),
       data: { url: data.url || "/" },
     })
   )
@@ -111,14 +113,58 @@ self.addEventListener("notificationclick", (event) => {
   event.notification.close()
   const target = new URL(event.notification.data?.url || "/", self.location.origin).href
   event.waitUntil(
-    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((wins) => {
-      for (const w of wins) {
-        if (w.url.startsWith(self.location.origin) && "focus" in w) {
-          w.navigate(target)
-          return w.focus()
+    (async () => {
+      const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true })
+      const win = wins.find((w) => w.url.startsWith(self.location.origin))
+      if (win) {
+        // navigate() isn't allowed on every browser (and not on uncontrolled
+        // pages); focusing the app is still better than opening a second copy.
+        try {
+          const moved = await win.navigate(target)
+          return (moved || win).focus()
+        } catch {
+          try {
+            return await win.focus()
+          } catch {}
         }
       }
       return self.clients.openWindow(target)
-    })
+    })()
+  )
+})
+
+// Browsers renew or expire subscriptions on their own. Re-subscribe with the
+// same key and tell the server, so notifications keep arriving. The app also
+// re-registers on every visit, which covers browsers without this event.
+self.addEventListener("pushsubscriptionchange", (event) => {
+  const old = event.oldSubscription
+  const key = old?.options?.applicationServerKey
+  event.waitUntil(
+    (async () => {
+      const sub =
+        event.newSubscription ||
+        (key &&
+          (await self.registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: key,
+          })))
+      if (!sub) return
+      const json = sub.toJSON()
+      const post = () =>
+        fetch("/api/notifications/subscriptions", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ endpoint: json.endpoint, keys: json.keys }),
+        })
+      let res = await post()
+      if (res.status === 401) {
+        const refreshed = await fetch("/api/auth/refresh", {
+          method: "POST",
+          credentials: "same-origin",
+        })
+        if (refreshed.ok) res = await post()
+      }
+    })().catch(() => {})
   )
 })

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname, useSearchParams } from "next/navigation"
 import {
@@ -12,6 +12,7 @@ import {
   IconLayoutKanban,
   IconMap2,
   IconMessageDots,
+  IconMicrophone,
   IconPlus,
   IconReportAnalytics,
   IconRoute,
@@ -25,7 +26,8 @@ import {
 } from "@tabler/icons-react"
 import { cn } from "@/lib/utils"
 import { UserAvatar } from "@/components/user-avatar"
-import { useMe, useToday } from "@/lib/queries"
+import { useMe, useNotificationConfig, useToday } from "@/lib/queries"
+import { syncPush } from "@/lib/push"
 import { useMediaQuery } from "@/hooks/use-media-query"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
@@ -92,6 +94,7 @@ function useNav(): NavItem[] {
 }
 
 const TOOLS: NavItem[] = [
+  { href: "/debrief", label: "Debrief", short: "Debrief", icon: IconMicrophone },
   { href: "/balances", label: "Balances", short: "Balances", icon: IconCash },
   { href: "/visits", label: "Visits", short: "Visits", icon: IconMap2 },
   { href: "/plans", label: "Follow-up plans", short: "Plans", icon: IconRoute },
@@ -143,6 +146,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   )
 }
 
+/** Keeps this device's push subscription current with the server. */
+function PushSync() {
+  const { data } = useNotificationConfig()
+  const key = data?.pushKey
+  useEffect(() => {
+    if (key) void syncPush(key)
+  }, [key])
+  return null
+}
+
 function Shell({ children }: { children: React.ReactNode }) {
   const addProspect = useAddProspect()
   const params = useSearchParams()
@@ -159,6 +172,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         <MessageProvider>
           <CommandPaletteProvider>
             <GoalWatcher />
+            <PushSync />
             <div className="min-h-svh lg:grid lg:grid-cols-[15.5rem_1fr] print:block">
               <Sidebar onAdd={() => addProspect()} />
 
@@ -376,6 +390,15 @@ function MobileHeader() {
           onClick={search}
         >
           <IconSearch />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Debrief"
+          nativeButton={false}
+          render={<Link href="/debrief" />}
+        >
+          <IconMicrophone />
         </Button>
         <Button
           variant="ghost"

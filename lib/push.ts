@@ -10,14 +10,34 @@ export function pushSupported() {
   )
 }
 
-/** iOS only allows web push from an app added to the home screen. */
-export function needsInstallForPush() {
+/** iPhone or iPad (iPadOS reports itself as a Mac with a touch screen). */
+export function isIos() {
   if (typeof window === "undefined") return false
-  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent)
-  const standalone =
+  return (
+    /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+    (/macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1)
+  )
+}
+
+export function isStandalone() {
+  if (typeof window === "undefined") return false
+  return (
     window.matchMedia("(display-mode: standalone)").matches ||
     (navigator as { standalone?: boolean }).standalone === true
-  return ios && !standalone
+  )
+}
+
+/** iOS only allows web push from an app added to the home screen. */
+export function needsInstallForPush() {
+  return isIos() && !isStandalone()
+}
+
+/** Apps like WhatsApp, Instagram and Facebook open links in a browser without push. */
+export function inAppBrowser() {
+  if (typeof window === "undefined") return false
+  return /FBAN|FBAV|Instagram|Line\/|WhatsApp|Snapchat|TikTok|; wv\)/i.test(
+    navigator.userAgent
+  )
 }
 
 function keyBytes(base64url: string) {
@@ -51,19 +71,50 @@ export async function enablePush(publicKey: string) {
         ? "Notifications are blocked for this site. Allow them in your browser settings, then try again."
         : "Notifications weren’t allowed."
     )
-  const reg = await registration()
-  await navigator.serviceWorker.ready
-  const sub =
-    (await reg.pushManager.getSubscription()) ??
-    (await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: keyBytes(publicKey),
-    }))
+  await registration()
+  const reg = await navigator.serviceWorker.ready
+  await save(await subscribe(reg, publicKey))
+}
+
+const sameKey = (sub: PushSubscription, publicKey: string) => {
+  const current = sub.options?.applicationServerKey
+  if (!current) return true
+  const a = new Uint8Array(current)
+  const b = keyBytes(publicKey)
+  return a.length === b.length && a.every((v, i) => v === b[i])
+}
+
+/** This browser's subscription for the server's key, replacing one made for an old key. */
+async function subscribe(reg: ServiceWorkerRegistration, publicKey: string) {
+  const existing = await reg.pushManager.getSubscription()
+  if (existing && sameKey(existing, publicKey)) return existing
+  await existing?.unsubscribe()
+  return reg.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: keyBytes(publicKey),
+  })
+}
+
+function save(sub: PushSubscription) {
   const json = sub.toJSON()
-  await api("/notifications/subscriptions", {
+  return api("/notifications/subscriptions", {
     method: "POST",
     body: { endpoint: json.endpoint, keys: json.keys },
   })
+}
+
+/**
+ * Re-registers this device on each visit when notifications are allowed. Browsers
+ * rotate or drop subscriptions, and the server forgets ones that stop working;
+ * this quietly fixes both without the user doing anything.
+ */
+export async function syncPush(publicKey: string) {
+  if (!pushSupported() || Notification.permission !== "granted") return
+  try {
+    const reg = await navigator.serviceWorker.getRegistration()
+    if (!reg) return
+    await save(await subscribe(reg, publicKey))
+  } catch {}
 }
 
 export async function disablePush() {

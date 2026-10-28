@@ -7,7 +7,7 @@ import { IconRoute, IconSparkles } from "@tabler/icons-react"
 import { toast } from "sonner"
 import { z } from "zod"
 import { followUpDays } from "@/lib/contact"
-import { addDays, localToday, niceDate } from "@/lib/format"
+import { addDays, clock, localToday, niceDate } from "@/lib/format"
 import { planProgress } from "@/lib/plans"
 import {
   useAiStatus,
@@ -97,6 +97,7 @@ const quickLogSchema = z.object({
   outcome: z.enum(["", ...OUTCOMES]),
   note: z.string().trim().max(1000, "Keep the note under 1,000 characters"),
   nextDate: z.string().min(1, "Pick the next follow-up date"),
+  nextTime: z.string(),
   nextAction: z.string().trim().max(200, "Keep it under 200 characters"),
 })
 type QuickLogValues = z.infer<typeof quickLogSchema>
@@ -137,6 +138,7 @@ function QuickLogForm({
       type: preset.type ?? plan?.current?.type ?? "CALL",
       outcome: preset.outcome ?? "",
       note: preset.note ?? "",
+      nextTime: "",
       ...defaultsFor(preset.outcome ?? ""),
     },
   })
@@ -187,9 +189,10 @@ function QuickLogForm({
         ...values,
         outcome: values.outcome || undefined,
         note: values.note || undefined,
+        nextTime: values.nextTime || undefined,
       })
       toast.success(`Logged for ${prospect.name}`, {
-        description: `Next follow-up ${niceDate(values.nextDate)}`,
+        description: `Next follow-up ${niceDate(values.nextDate)}${values.nextTime ? ` at ${clock(values.nextTime)}` : ""}`,
       })
       onDone()
     } catch (e) {
@@ -329,7 +332,16 @@ function QuickLogForm({
                   )
                 })}
               </div>
-              <Input {...field} type="date" min={today} />
+              <div className="flex gap-2">
+                <Input {...field} type="date" min={today} className="flex-1" />
+                <Input
+                  {...form.register("nextTime")}
+                  type="time"
+                  className="w-32"
+                  aria-label="Time (optional)"
+                  title="Add a time to get a reminder before it"
+                />
+              </div>
             </>
           )}
         />

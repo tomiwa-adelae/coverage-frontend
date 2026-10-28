@@ -62,6 +62,7 @@ export const prospectSchema = z.object({
   funded: money("Funded balance"),
   nextAction: z.string().trim().max(200, "Keep it under 200 characters"),
   nextDate: z.string(),
+  nextTime: z.string(),
   notes: z.string().max(4000, "Notes must be 4,000 characters or fewer"),
   outcomeReason: z
     .string()
@@ -97,6 +98,7 @@ export function toDraft(p?: Partial<ProspectDetail>): ProspectDraft {
     funded: p?.funded ?? null,
     nextAction: p?.nextAction ?? "",
     nextDate: p?.nextDate ?? "",
+    nextTime: p?.nextTime ?? "",
     notes: p?.notes ?? "",
     outcomeReason: p?.outcomeReason ?? "",
     source: p?.source ?? "",
@@ -129,6 +131,7 @@ export function toInput(d: ProspectDraft): ProspectInput {
     funded: d.funded,
     nextAction: s(d.nextAction),
     nextDate: d.nextDate || null,
+    nextTime: (d.nextDate && d.nextTime) || null,
     notes: s(d.notes),
     outcomeReason: s(d.outcomeReason),
     source: d.source || null,
@@ -202,7 +205,18 @@ export function NextStepFields({
         control={form.control}
         name="nextDate"
         label="Date"
-        render={(field) => <Input {...field} type="date" min={today} />}
+        render={(field) => (
+          <div className="flex gap-2">
+            <Input {...field} type="date" min={today} className="flex-1" />
+            <Input
+              {...form.register("nextTime")}
+              type="time"
+              className="w-32"
+              aria-label="Time (optional)"
+              title="Add a time to get a reminder before it"
+            />
+          </div>
+        )}
       />
       <div className="-mt-2 flex flex-wrap gap-1.5">
         {QUICK_DATES.map(([label, n]) => {
@@ -225,7 +239,10 @@ export function NextStepFields({
         {nextDate && (
           <Chip
             className="text-muted-foreground"
-            onClick={() => form.setValue("nextDate", "", { shouldDirty: true })}
+            onClick={() => {
+              form.setValue("nextDate", "", { shouldDirty: true })
+              form.setValue("nextTime", "", { shouldDirty: true })
+            }}
           >
             Clear
           </Chip>
