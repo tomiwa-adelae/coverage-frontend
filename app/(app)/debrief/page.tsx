@@ -44,6 +44,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { useRecorder } from "@/components/debrief/use-recorder"
 import { DebriefReview } from "@/components/debrief/review"
 import { useOpenProspect } from "@/components/prospect-sheet"
+import { DictateButton, appendText, useDictation } from "@/components/dictate"
 
 const noop = () => () => {}
 
@@ -74,11 +75,15 @@ export default function DebriefPage() {
 
 function Start() {
   const router = useRouter()
+  const params = useSearchParams()
   const status = useDebriefStatus()
   const create = useCreateDebrief()
   const supported = useSyncExternalStore(noop, canRecord, () => true)
-  const [typing, setTyping] = useState(false)
+  const [typing, setTyping] = useState(params.get("mode") === "type")
   const [text, setText] = useState("")
+  // The browser's own speech-to-text: free, and words appear as you talk, so
+  // only text goes to the AI. Handy when sending audio fails.
+  const dictation = useDictation((t) => setText((cur) => appendText(cur, t)))
   const [pending, setPending] = useState<PendingRecording | null>(null)
   const [upload, setUpload] = useState<
     { state: "sending"; progress: number } | { state: "failed"; error: string } | null
@@ -129,6 +134,7 @@ function Start() {
   }
 
   function submitText() {
+    dictation.stop()
     create.mutate(
       { text: text.trim() },
       {
@@ -207,16 +213,27 @@ function Start() {
           className="min-h-56"
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="e.g. Saw Mr Adeyemi at Lekki Foods, he’ll fund ₦20m by Friday. Call Mrs Okafor tomorrow at 10…"
+          placeholder={
+            dictation.supported
+              ? "Tap Dictate and talk, or type. e.g. Saw Mr Adeyemi at Lekki Foods, he’ll fund ₦20m by Friday…"
+              : "e.g. Saw Mr Adeyemi at Lekki Foods, he’ll fund ₦20m by Friday. Call Mrs Okafor tomorrow at 10…"
+          }
         />
-        <div className="flex justify-between gap-2">
-          {voice ? (
-            <Button variant="ghost" onClick={() => setTyping(false)}>
-              <IconMicrophone /> Record instead
-            </Button>
-          ) : (
-            <span />
-          )}
+        <div className="flex flex-wrap justify-between gap-2">
+          <div className="flex gap-2">
+            <DictateButton dictation={dictation} />
+            {voice && (
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  dictation.stop()
+                  setTyping(false)
+                }}
+              >
+                <IconMicrophone /> Record instead
+              </Button>
+            )}
+          </div>
           <Button
             onClick={submitText}
             disabled={text.trim().length < 10 || create.isPending}
@@ -302,7 +319,7 @@ function Start() {
         <>
           <div className="mt-3 text-center">
             <Button variant="ghost" size="sm" onClick={() => setTyping(true)}>
-              <IconKeyboard /> Type instead
+              <IconKeyboard /> Dictate or type instead
             </Button>
           </div>
           <RecentDebriefs />
@@ -483,7 +500,14 @@ function Failed({ d }: { d: Debrief }) {
         action={
           !d.transcript &&
           (saved ? (
-            <div className="flex gap-2">
+            <div className="flex flex-wrap justify-center gap-2">
+              <Button
+                variant="ghost"
+                nativeButton={false}
+                render={<Link href="/debrief?mode=type" />}
+              >
+                <IconKeyboard /> Dictate or type instead
+              </Button>
               <NewButton label="Record again" variant="outline" />
               <Button onClick={retry} disabled={progress !== null}>
                 {progress === null
