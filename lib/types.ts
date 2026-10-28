@@ -252,6 +252,8 @@ export interface Me {
   weeklyReport: boolean
   /** Minutes before a timed follow-up to remind; -1 is off. */
   reminderLead: number
+  /** Local hour for the evening "Debrief your day" push; -1 = off. */
+  debriefHour: number
   twoFactorEnabled: boolean
   teamId: string | null
   teamRole: "MANAGER" | "MEMBER" | null
@@ -506,11 +508,7 @@ export interface Template {
 export type TemplateInput = Pick<Template, "name" | "body">
 
 export type DebriefStatus =
-  | "UPLOADING"
-  | "PROCESSING"
-  | "READY"
-  | "FAILED"
-  | "APPLIED"
+  "UPLOADING" | "PROCESSING" | "READY" | "FAILED" | "APPLIED"
 
 /** One person the assistant picked out of a debrief, for review. */
 export interface DebriefSuggestion {
@@ -573,7 +571,12 @@ export interface DebriefSummary {
 /** What one reviewed person sends back to be saved. */
 export interface DebriefApplyItem {
   prospectId?: string
-  newProspect?: { name: string; company?: string; phone?: string; area?: string }
+  newProspect?: {
+    name: string
+    company?: string
+    phone?: string
+    area?: string
+  }
   contact?: { type: Touch; outcome?: Outcome; note?: string; date: string }
   note?: string
   stage?: Stage

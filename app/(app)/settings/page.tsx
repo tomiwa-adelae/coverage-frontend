@@ -342,6 +342,15 @@ function useSaveSetting() {
 
 const HOURS = [5, 6, 7, 8, 9, 10, 11]
 
+const DEBRIEF_HOURS: [number, string][] = [
+  [-1, "Off"],
+  [16, "4 pm"],
+  [17, "5 pm"],
+  [18, "6 pm"],
+  [19, "7 pm"],
+  [20, "8 pm"],
+]
+
 const REMINDER_LEADS: [number, string][] = [
   [-1, "Off"],
   [0, "At the time"],
@@ -450,8 +459,8 @@ function Notifications({ me }: { me: Me }) {
                         : device === "unsupported"
                           ? "This browser doesn't support notifications. Try Chrome, Edge, Firefox or Safari."
                           : device === "on"
-                      ? "This device will get reminders."
-                      : "Turn on to get reminders here."
+                            ? "This device will get reminders."
+                            : "Turn on to get reminders here."
           }
         >
           <div className="flex items-center gap-2">
@@ -467,7 +476,7 @@ function Notifications({ me }: { me: Me }) {
                 busy ||
                 !config?.pushKey ||
                 device === "loading" ||
-                device !== "on" && device !== "off"
+                (device !== "on" && device !== "off")
               }
               onCheckedChange={togglePush}
             />
@@ -487,6 +496,29 @@ function Notifications({ me }: { me: Me }) {
             className="w-36"
           >
             {REMINDER_LEADS.map(([v, label]) => (
+              <NativeSelectOption key={v} value={v}>
+                {label}
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
+        </SettingRow>
+        <SettingRow
+          id="debrief-hour"
+          title="Debrief reminder"
+          body="On weekdays, a nudge to talk through your day, unless you already have."
+        >
+          <NativeSelect
+            id="debrief-hour"
+            value={String(me.debriefHour)}
+            onChange={(e) =>
+              save(
+                { debriefHour: Number(e.target.value) },
+                "Debrief reminder saved"
+              )
+            }
+            className="w-36"
+          >
+            {DEBRIEF_HOURS.map(([v, label]) => (
               <NativeSelectOption key={v} value={v}>
                 {label}
               </NativeSelectOption>

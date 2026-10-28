@@ -1,8 +1,8 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
-import { usePathname, useSearchParams } from "next/navigation"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
   IconBolt,
   IconCash,
@@ -26,13 +26,18 @@ import {
 } from "@tabler/icons-react"
 import { cn } from "@/lib/utils"
 import { UserAvatar } from "@/components/user-avatar"
-import { useMe, useNotificationConfig, useToday } from "@/lib/queries"
+import {
+  useMe,
+  useNotificationConfig,
+  useProspect,
+  useToday,
+} from "@/lib/queries"
 import { syncPush } from "@/lib/push"
 import { useMediaQuery } from "@/hooks/use-media-query"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 import { ProspectPanel, useOpenProspect } from "@/components/prospect-sheet"
-import { QuickLogProvider } from "@/components/quick-log"
+import { QuickLogProvider, useQuickLogDialog } from "@/components/quick-log"
 import { CallTrackerProvider } from "@/components/call-tracker"
 import { BrandLockup } from "@/components/brand"
 import { GoalWatcher } from "@/components/goal-card"
@@ -94,7 +99,12 @@ function useNav(): NavItem[] {
 }
 
 const TOOLS: NavItem[] = [
-  { href: "/debrief", label: "Debrief", short: "Debrief", icon: IconMicrophone },
+  {
+    href: "/debrief",
+    label: "Debrief",
+    short: "Debrief",
+    icon: IconMicrophone,
+  },
   { href: "/balances", label: "Balances", short: "Balances", icon: IconCash },
   { href: "/visits", label: "Visits", short: "Visits", icon: IconMap2 },
   { href: "/plans", label: "Follow-up plans", short: "Plans", icon: IconRoute },
@@ -156,6 +166,27 @@ function PushSync() {
   return null
 }
 
+/** `?log=<id>` (from a "How did it go?" notification) opens the quick log. */
+function QuickLogFromUrl() {
+  const params = useSearchParams()
+  const router = useRouter()
+  const pathname = usePathname()
+  const quickLog = useQuickLogDialog()
+  const id = params.get("log")
+  const { data } = useProspect(id)
+  const opened = useRef<string | null>(null)
+  useEffect(() => {
+    if (!id || !data || opened.current === id) return
+    opened.current = id
+    quickLog(data)
+    const rest = new URLSearchParams(params)
+    rest.delete("log")
+    const q = rest.toString()
+    router.replace(q ? `${pathname}?${q}` : pathname, { scroll: false })
+  }, [id, data, params, pathname, quickLog, router])
+  return null
+}
+
 function Shell({ children }: { children: React.ReactNode }) {
   const addProspect = useAddProspect()
   const params = useSearchParams()
@@ -173,6 +204,7 @@ function Shell({ children }: { children: React.ReactNode }) {
           <CommandPaletteProvider>
             <GoalWatcher />
             <PushSync />
+            <QuickLogFromUrl />
             <div className="min-h-svh lg:grid lg:grid-cols-[15.5rem_1fr] print:block">
               <Sidebar onAdd={() => addProspect()} />
 

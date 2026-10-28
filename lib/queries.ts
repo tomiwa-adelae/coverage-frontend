@@ -210,6 +210,7 @@ export type MeInput = Partial<
     | "managerEmail"
     | "weeklyReport"
     | "reminderLead"
+    | "debriefHour"
   >
 >
 
