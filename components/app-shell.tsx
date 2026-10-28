@@ -5,6 +5,7 @@ import Link from "next/link"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
   IconBolt,
+  IconCalculator,
   IconCash,
   IconChartBar,
   IconDots,
@@ -106,6 +107,12 @@ const TOOLS: NavItem[] = [
     icon: IconMicrophone,
   },
   { href: "/balances", label: "Balances", short: "Balances", icon: IconCash },
+  {
+    href: "/planner",
+    label: "Balance planner",
+    short: "Planner",
+    icon: IconCalculator,
+  },
   { href: "/visits", label: "Visits", short: "Visits", icon: IconMap2 },
   { href: "/plans", label: "Follow-up plans", short: "Plans", icon: IconRoute },
   {
