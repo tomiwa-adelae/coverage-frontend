@@ -179,7 +179,10 @@ function AddProspectForm({
   const phone = useDeferredValue(
     digits(useWatch({ control: form.control, name: "phone" }))
   )
-  const duplicate = useDuplicate(name, phone)
+  const email = useDeferredValue(
+    useWatch({ control: form.control, name: "email" }).trim().toLowerCase()
+  )
+  const duplicate = useDuplicate(name, phone, email)
   const potential = useWatch({ control: form.control, name: "potential" })
 
   async function importContact() {
@@ -471,7 +474,24 @@ function AddProspectForm({
 }
 
 /** Looks for an existing prospect with the same phone number or exact name. */
-function useDuplicate(name: string, phone: string) {
+// Titles people add or drop between entries ("Chief Musa Bello" vs "Musa Bello").
+const TITLES = new Set(
+  "mr mrs ms miss dr chief alhaji alhaja hajia engr arc barr prof pastor rev sir madam mallam otunba".split(
+    " "
+  )
+)
+
+/** "Okafor, Adaeze (Mrs)" and "Mrs Adaeze Okafor" give the same key. */
+const nameKey = (s: string) =>
+  s
+    .toLowerCase()
+    .replace(/[^a-z\s]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w && !TITLES.has(w))
+    .sort()
+    .join(" ")
+
+function useDuplicate(name: string, phone: string, email: string) {
   // The full list is usually cached already and small enough to scan here.
   const { data } = useProspects({})
   if (!data) return null
@@ -480,10 +500,13 @@ function useDuplicate(name: string, phone: string) {
     const p = data.find((x) => x.phone && digits(x.phone).endsWith(tail))
     if (p) return { ...p, by: "phone number" }
   }
-  if (name.length >= 3) {
-    const p = data.find(
-      (x) => x.name.trim().toLowerCase() === name.toLowerCase()
-    )
+  if (email.includes("@")) {
+    const p = data.find((x) => x.email?.trim().toLowerCase() === email)
+    if (p) return { ...p, by: "email" }
+  }
+  const key = nameKey(name)
+  if (key.length >= 3) {
+    const p = data.find((x) => nameKey(x.name) === key)
     if (p) return { ...p, by: "name" }
   }
   return null
