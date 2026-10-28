@@ -135,7 +135,7 @@ function Start() {
     return (
       <Notice
         title="Debriefs aren’t switched on yet"
-        body="The AI assistant isn’t set up on the server, so debriefs can’t be read. Ask whoever runs Coverage to add the Anthropic key."
+        body="The AI assistant isn’t set up on the server, so debriefs can’t be read. Ask whoever runs Coverage to add a Gemini or Anthropic API key."
       />
     )
 
