@@ -12,6 +12,7 @@ import {
   IconPlayerPauseFilled,
   IconPlayerPlayFilled,
   IconPlayerStopFilled,
+  IconArrowBackUp,
   IconTrash,
 } from "@tabler/icons-react"
 import { toast } from "sonner"
@@ -35,6 +36,7 @@ import {
   useDeleteDebrief,
   useRereadDebrief,
   useToday,
+  useUndoDebrief,
 } from "@/lib/queries"
 import type { Debrief } from "@/lib/types"
 import { Button } from "@/components/ui/button"
@@ -60,8 +62,8 @@ export default function DebriefPage() {
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">Debrief</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Talk through your day. Coverage sorts it into each person’s record
-          for you to check.
+          Talk through your day. Coverage sorts it into each person’s record for
+          you to check.
         </p>
       </header>
       <div className="mt-6">
@@ -86,7 +88,9 @@ function Start() {
   const dictation = useDictation((t) => setText((cur) => appendText(cur, t)))
   const [pending, setPending] = useState<PendingRecording | null>(null)
   const [upload, setUpload] = useState<
-    { state: "sending"; progress: number } | { state: "failed"; error: string } | null
+    | { state: "sending"; progress: number }
+    | { state: "failed"; error: string }
+    | null
   >(null)
 
   // A recording that never reached the server (closed tab, no signal).
@@ -255,7 +259,9 @@ function Start() {
           aria-label={busy ? "Stop and send" : "Start recording"}
           className={cn(
             "relative mx-auto grid size-28 place-items-center rounded-full text-white shadow-lg transition-transform active:scale-95",
-            busy ? "bg-red-600" : "bg-primary dark:bg-brand dark:text-brand-foreground"
+            busy
+              ? "bg-red-600"
+              : "bg-primary dark:bg-brand dark:text-brand-foreground"
           )}
         >
           {recorder.state === "recording" && (
@@ -436,19 +442,19 @@ function Processing({ d }: { d: Debrief }) {
     <div className="rounded-2xl border bg-card p-6">
       <ol className="space-y-3">
         {steps.map(([key, text], i) => (
-            <li key={key} className="flex items-center gap-3 text-sm">
-              {i < at ? (
-                <IconCircleCheck className="size-5 text-emerald-600" />
-              ) : i === at ? (
-                <Spinner className="size-5" />
-              ) : (
-                <span className="size-5 rounded-full border" />
-              )}
-              <span className={cn(i > at && "text-muted-foreground")}>
-                {text}
-              </span>
-            </li>
-          ))}
+          <li key={key} className="flex items-center gap-3 text-sm">
+            {i < at ? (
+              <IconCircleCheck className="size-5 text-emerald-600" />
+            ) : i === at ? (
+              <Spinner className="size-5" />
+            ) : (
+              <span className="size-5 rounded-full border" />
+            )}
+            <span className={cn(i > at && "text-muted-foreground")}>
+              {text}
+            </span>
+          </li>
+        ))}
       </ol>
       <p className="mt-4 text-xs text-muted-foreground">
         Usually under a minute. You can leave this page; it’ll be under Recent
@@ -562,7 +568,9 @@ function Applied({ d }: { d: Debrief }) {
   const ok = results.filter((r) => r.ok)
   const pushOff = useSyncExternalStore(
     noop,
-    () => typeof Notification === "undefined" || Notification.permission !== "granted",
+    () =>
+      typeof Notification === "undefined" ||
+      Notification.permission !== "granted",
     () => false
   )
   const timed = d.result?.items.some((s) => s.nextTime)
@@ -577,7 +585,10 @@ function Applied({ d }: { d: Debrief }) {
         </div>
         <ul className="mt-4 divide-y">
           {results.map((r, i) => (
-            <li key={i} className="flex items-center justify-between gap-3 py-2 text-sm">
+            <li
+              key={i}
+              className="flex items-center justify-between gap-3 py-2 text-sm"
+            >
               <span className="min-w-0">
                 <span className="font-medium">{r.name}</span>
                 {r.created && (
@@ -590,7 +601,11 @@ function Applied({ d }: { d: Debrief }) {
                 )}
               </span>
               {r.ok && r.prospectId && (
-                <Button variant="ghost" size="sm" onClick={() => open(r.prospectId!)}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => open(r.prospectId!)}
+                >
                   Open
                 </Button>
               )}
@@ -608,18 +623,52 @@ function Applied({ d }: { d: Debrief }) {
               follow-ups.
             </p>
           </div>
-          <Button size="sm" variant="outline" nativeButton={false} render={<Link href="/settings#notifications" />}>
+          <Button
+            size="sm"
+            variant="outline"
+            nativeButton={false}
+            render={<Link href="/settings#notifications" />}
+          >
             Turn on
           </Button>
         </div>
       )}
-      <div className="flex justify-center gap-2">
+      <div className="flex flex-wrap justify-center gap-2">
         <NewButton label="New debrief" />
+        {d.undoUntil && <UndoButton id={d.id} until={d.undoUntil} />}
         <Button variant="ghost" nativeButton={false} render={<Link href="/" />}>
           Back to Today
         </Button>
       </div>
     </div>
+  )
+}
+
+/** Puts the records back and returns to review; hidden once the window closes. */
+function UndoButton({ id, until }: { id: string; until: string }) {
+  const undo = useUndoDebrief(id)
+  const [expired, setExpired] = useState(() => Date.parse(until) <= Date.now())
+  useEffect(() => {
+    const t = setTimeout(
+      () => setExpired(true),
+      Math.max(0, Date.parse(until) - Date.now())
+    )
+    return () => clearTimeout(t)
+  }, [until])
+  if (expired) return null
+  return (
+    <Button
+      variant="outline"
+      disabled={undo.isPending}
+      onClick={() =>
+        undo.mutate(undefined, {
+          onSuccess: () =>
+            toast.success("Undone. Nothing from this debrief is saved now."),
+        })
+      }
+    >
+      <IconArrowBackUp /> {undo.isPending ? "Undoing…" : "Undo"}
+    </Button>
   )
 }
 

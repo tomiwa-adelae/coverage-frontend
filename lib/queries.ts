@@ -734,6 +734,19 @@ export function useApplyDebrief(id: string) {
   })
 }
 
+export function useUndoDebrief(id: string) {
+  const qc = useQueryClient()
+  const invalidate = useInvalidateAll()
+  return useMutation({
+    mutationFn: () => api<Debrief>(`/debriefs/${id}/undo`, { method: "POST" }),
+    onSuccess: (d) => {
+      qc.setQueryData(["debriefs", id], d)
+      invalidate()
+    },
+    onError,
+  })
+}
+
 export function useDeleteDebrief() {
   const qc = useQueryClient()
   return useMutation({

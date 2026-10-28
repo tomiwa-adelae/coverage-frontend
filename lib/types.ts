@@ -555,6 +555,8 @@ export interface Debrief {
   transcript: string | null
   result: { items: DebriefSuggestion[]; other: string[] } | null
   applied: DebriefApplied[] | null
+  /** Saved debriefs can be undone until this time. */
+  undoUntil: string | null
   error: string | null
   createdAt: string
   updatedAt: string
