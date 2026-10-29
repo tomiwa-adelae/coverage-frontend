@@ -28,6 +28,10 @@ import type {
   ProspectsMeta,
   Template,
   SecurityData,
+  ChecklistKind,
+  SuggestedTask,
+  Task,
+  TaskInput,
   Team,
   TemplateInput,
   TidiedNote,
@@ -106,6 +110,88 @@ function useInvalidateAll() {
 }
 
 const onError = (e: Error) => toast.error(e.message)
+
+// ------------------------------------------------------------------ To-dos
+
+export const useTasks = (status: "open" | "done" = "open") =>
+  useQuery({
+    queryKey: ["tasks", status],
+    queryFn: () => api<Task[]>(`/tasks?status=${status}`),
+  })
+
+/** Tasks show in lists and on prospect cards, so refresh both. */
+function useInvalidateTasks() {
+  const qc = useQueryClient()
+  return () => {
+    qc.invalidateQueries({ queryKey: ["tasks"] })
+    qc.invalidateQueries({ queryKey: ["prospects", "detail"] })
+  }
+}
+
+export function useCreateTask() {
+  const invalidate = useInvalidateTasks()
+  return useMutation({
+    mutationFn: (body: TaskInput & { title: string }) =>
+      api<Task>("/tasks", { method: "POST", body }),
+    onSuccess: invalidate,
+    onError,
+  })
+}
+
+/** Ticks show straight away; the server catches up behind. */
+export function useUpdateTask() {
+  const qc = useQueryClient()
+  const invalidate = useInvalidateTasks()
+  return useMutation({
+    mutationFn: ({ id, ...body }: TaskInput & { id: string }) =>
+      api<Task & { next: Task | null }>(`/tasks/${id}`, {
+        method: "PATCH",
+        body,
+      }),
+    onMutate: async ({ id, done }) => {
+      if (done === undefined) return
+      await qc.cancelQueries({ queryKey: ["tasks"] })
+      const doneAt = done ? new Date().toISOString() : null
+      qc.setQueriesData<Task[]>({ queryKey: ["tasks"] }, (list) =>
+        list?.map((t) => (t.id === id ? { ...t, doneAt } : t))
+      )
+      qc.setQueriesData<ProspectDetail>(
+        { queryKey: ["prospects", "detail"] },
+        (p) =>
+          p?.tasks
+            ? {
+                ...p,
+                tasks: p.tasks.map((t) => (t.id === id ? { ...t, doneAt } : t)),
+              }
+            : p
+      )
+    },
+    onSettled: invalidate,
+    onError,
+  })
+}
+
+export function useDeleteTask() {
+  const invalidate = useInvalidateTasks()
+  return useMutation({
+    mutationFn: (id: string) => api<void>(`/tasks/${id}`, { method: "DELETE" }),
+    onSuccess: invalidate,
+    onError,
+  })
+}
+
+export function useAddChecklist(prospectId: string) {
+  const invalidate = useInvalidateTasks()
+  return useMutation({
+    mutationFn: (kind: ChecklistKind) =>
+      api<Task[]>(`/tasks/checklist/${prospectId}`, {
+        method: "POST",
+        body: { kind },
+      }),
+    onSuccess: invalidate,
+    onError,
+  })
+}
 
 export function useCreateProspect() {
   const invalidate = useInvalidateAll()
@@ -721,14 +807,14 @@ export function useApplyDebrief(id: string) {
   const qc = useQueryClient()
   const invalidate = useInvalidateAll()
   return useMutation({
-    mutationFn: (items: DebriefApplyItem[]) =>
-      api<Debrief>(`/debriefs/${id}/apply`, {
-        method: "POST",
-        body: { items },
-      }),
+    mutationFn: (body: {
+      items: DebriefApplyItem[]
+      tasks?: SuggestedTask[]
+    }) => api<Debrief>(`/debriefs/${id}/apply`, { method: "POST", body }),
     onSuccess: (d) => {
       qc.setQueryData(["debriefs", id], d)
       invalidate()
+      qc.invalidateQueries({ queryKey: ["tasks"] })
     },
     onError,
   })
@@ -742,6 +828,7 @@ export function useUndoDebrief(id: string) {
     onSuccess: (d) => {
       qc.setQueryData(["debriefs", id], d)
       invalidate()
+      qc.invalidateQueries({ queryKey: ["tasks"] })
     },
     onError,
   })

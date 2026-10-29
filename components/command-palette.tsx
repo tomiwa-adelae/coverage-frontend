@@ -21,6 +21,7 @@ import {
   IconPlus,
   IconReportAnalytics,
   IconRoute,
+  IconListCheck,
   IconSettings,
   IconShieldLock,
   IconSun,
@@ -93,6 +94,12 @@ export const PAGES: {
     label: "Visits",
     icon: IconMap2,
     keywords: "map route area",
+  },
+  {
+    href: "/tasks",
+    label: "To do",
+    icon: IconListCheck,
+    keywords: "tasks todo checklist documents",
   },
   {
     href: "/plans",

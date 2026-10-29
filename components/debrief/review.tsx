@@ -7,7 +7,7 @@ import {
   IconUserPlus,
 } from "@tabler/icons-react"
 import { cn } from "@/lib/utils"
-import { naira, niceDate } from "@/lib/format"
+import { clock, naira, niceDate, relativeDay } from "@/lib/format"
 import { useApplyDebrief, useProspect, useProspects } from "@/lib/queries"
 import {
   OUTCOME_LABEL,
@@ -17,6 +17,7 @@ import {
   type Debrief,
   type DebriefApplyItem,
   type DebriefSuggestion,
+  type SuggestedTask,
 } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -51,6 +52,8 @@ interface Draft {
   nextAction: string
   nextDate: string
   nextTime: string
+  /** Suggested to-dos, each one kept or not. */
+  tasks: (SuggestedTask & { include: boolean })[]
 }
 
 function initialDraft(s: DebriefSuggestion): Draft {
@@ -81,8 +84,19 @@ function initialDraft(s: DebriefSuggestion): Draft {
     nextAction: s.nextAction,
     nextDate: s.nextDate ?? "",
     nextTime: s.nextTime ?? "",
+    tasks: (s.tasks ?? []).map((t) => ({ ...t, include: true })),
   }
 }
+
+/** The kept to-dos, in the shape the server takes. */
+const keptTasks = (tasks: (SuggestedTask & { include: boolean })[]) =>
+  tasks
+    .filter((t) => t.include && t.title.trim())
+    .map((t) => ({
+      title: t.title.trim(),
+      ...(t.dueDate && { dueDate: t.dueDate }),
+      ...(t.dueDate && t.dueTime && { dueTime: t.dueTime }),
+    }))
 
 function toItem(s: DebriefSuggestion, d: Draft): DebriefApplyItem {
   const item: DebriefApplyItem = {}
@@ -123,6 +137,8 @@ function toItem(s: DebriefSuggestion, d: Draft): DebriefApplyItem {
       if (d.nextTime) item.nextTime = d.nextTime
     }
   }
+  const tasks = keptTasks(d.tasks)
+  if (tasks.length) item.tasks = tasks
   return item
 }
 
@@ -148,6 +164,9 @@ export function DebriefReview({
     Object.fromEntries(items.map((s) => [s.key, initialDraft(s)]))
   )
   const apply = useApplyDebrief(debrief.id)
+  const [general, setGeneral] = useState(() =>
+    (debrief.result?.tasks ?? []).map((t) => ({ ...t, include: true }))
+  )
 
   const included = items.filter((s) => drafts[s.key]?.include)
   const blocked = included
@@ -158,10 +177,13 @@ export function DebriefReview({
     setDrafts((all) => ({ ...all, [key]: { ...all[key], ...patch } }))
 
   function save() {
-    apply.mutate(included.map((s) => toItem(s, drafts[s.key])))
+    apply.mutate({
+      items: included.map((s) => toItem(s, drafts[s.key])),
+      tasks: keptTasks(general),
+    })
   }
 
-  if (!items.length)
+  if (!items.length && !general.length)
     return (
       <div className="rounded-2xl border border-dashed p-8 text-center">
         <p className="font-medium">No one to update</p>
@@ -190,6 +212,23 @@ export function DebriefReview({
           />
         ))}
       </div>
+      {general.length > 0 && (
+        <div className="mt-6 rounded-xl border bg-card p-4">
+          <p className="text-sm font-medium">Your to-dos</p>
+          <p className="text-xs text-muted-foreground">
+            Not about anyone in particular. Added to your to-do list.
+          </p>
+          <TaskChecks
+            tasks={general}
+            today={today}
+            onChange={(i, patch) =>
+              setGeneral((all) =>
+                all.map((t, j) => (j === i ? { ...t, ...patch } : t))
+              )
+            }
+          />
+        </div>
+      )}
       {other.length > 0 && <OtherNotes notes={other} />}
 
       <div className="sticky bottom-0 z-10 -mx-4 mt-6 border-t bg-background/95 px-4 py-3 backdrop-blur sm:mx-0 sm:rounded-xl sm:border">
@@ -197,11 +236,17 @@ export function DebriefReview({
           <p className="text-sm text-muted-foreground">
             {blocked
               ? `${blocked} card${blocked > 1 ? "s" : ""} need${blocked > 1 ? "" : "s"} a choice`
-              : `${included.length} of ${items.length} selected`}
+              : items.length
+                ? `${included.length} of ${items.length} selected`
+                : `${keptTasks(general).length} to-do${keptTasks(general).length === 1 ? "" : "s"}`}
           </p>
           <Button
             onClick={save}
-            disabled={!included.length || blocked > 0 || apply.isPending}
+            disabled={
+              (!included.length && !keptTasks(general).length) ||
+              blocked > 0 ||
+              apply.isPending
+            }
           >
             {apply.isPending
               ? "Saving…"
@@ -210,6 +255,46 @@ export function DebriefReview({
         </div>
       </div>
     </div>
+  )
+}
+
+/** Suggested to-dos, each with a tick to keep it and an editable title. */
+function TaskChecks({
+  tasks,
+  today,
+  onChange,
+}: {
+  tasks: (SuggestedTask & { include: boolean })[]
+  today: string
+  onChange: (
+    index: number,
+    patch: Partial<SuggestedTask & { include: boolean }>
+  ) => void
+}) {
+  return (
+    <ul className="mt-2 space-y-2">
+      {tasks.map((t, i) => (
+        <Row
+          key={i}
+          on={t.include}
+          onToggle={() => onChange(i, { include: !t.include })}
+        >
+          <Input
+            value={t.title}
+            onChange={(e) => onChange(i, { title: e.target.value })}
+            aria-label="To-do"
+            maxLength={200}
+            className="h-8"
+          />
+          {t.dueDate && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Due {relativeDay(t.dueDate, today)}
+              {t.dueTime && `, ${clock(t.dueTime)}`}
+            </p>
+          )}
+        </Row>
+      ))}
+    </ul>
   )
 }
 
@@ -369,7 +454,8 @@ function PersonCard({
                     {s.wantsProducts.map((p) => PRODUCT_LABEL[p]).join(", ")}
                   </span>
                 )}
-                {s.wantsProducts.length > 0 && s.holdsProducts.length > 0 &&
+                {s.wantsProducts.length > 0 &&
+                  s.holdsProducts.length > 0 &&
                   " · "}
                 {s.holdsProducts.length > 0 && (
                   <span>
@@ -427,6 +513,24 @@ function PersonCard({
               </Row>
             )}
           </ul>
+          {d.tasks.length > 0 && (
+            <div className="mt-3 border-t pt-3">
+              <p className="text-xs font-medium text-muted-foreground">
+                To-dos for this person
+              </p>
+              <TaskChecks
+                tasks={d.tasks}
+                today={today}
+                onChange={(i, patch) =>
+                  onChange({
+                    tasks: d.tasks.map((t, j) =>
+                      j === i ? { ...t, ...patch } : t
+                    ),
+                  })
+                }
+              />
+            </div>
+          )}
         </div>
       )}
     </section>
@@ -444,12 +548,14 @@ function Row({
 }) {
   return (
     <li className="flex items-start gap-2.5 text-sm">
-      <Checkbox
-        className="mt-0.5"
-        checked={on}
-        onCheckedChange={onToggle}
-      />
-      <div className={cn("min-w-0 flex-1", !on && "text-muted-foreground line-through decoration-muted-foreground/50")}>
+      <Checkbox className="mt-0.5" checked={on} onCheckedChange={onToggle} />
+      <div
+        className={cn(
+          "min-w-0 flex-1",
+          !on &&
+            "text-muted-foreground line-through decoration-muted-foreground/50"
+        )}
+      >
         {children}
       </div>
     </li>
@@ -477,7 +583,11 @@ function MatchPicker({
   const showChoices =
     d.target.kind === "choose" || s.match === "UNSURE" || searching
 
-  const pickExisting = (p: { id: string; name: string; company: string | null }) => {
+  const pickExisting = (p: {
+    id: string
+    name: string
+    company: string | null
+  }) => {
     onChange({ target: { kind: "existing", ...p } })
     setSearching(false)
     setQ("")
@@ -535,7 +645,10 @@ function MatchPicker({
                   >
                     {p.name}
                     {p.company && (
-                      <span className="text-muted-foreground"> · {p.company}</span>
+                      <span className="text-muted-foreground">
+                        {" "}
+                        · {p.company}
+                      </span>
                     )}
                   </button>
                 </li>
@@ -554,7 +667,9 @@ function MatchPicker({
           className="text-xs font-medium text-primary hover:underline dark:text-brand"
           onClick={() => setSearching(true)}
         >
-          {d.target.kind === "existing" ? "Not them? Pick someone else" : "Find in my list"}
+          {d.target.kind === "existing"
+            ? "Not them? Pick someone else"
+            : "Find in my list"}
         </button>
       )}
 
@@ -563,7 +678,9 @@ function MatchPicker({
           <Input
             value={d.newProspect.name}
             onChange={(e) =>
-              onChange({ newProspect: { ...d.newProspect, name: e.target.value } })
+              onChange({
+                newProspect: { ...d.newProspect, name: e.target.value },
+              })
             }
             placeholder="Name"
             aria-label="Name"
@@ -582,7 +699,9 @@ function MatchPicker({
             value={d.newProspect.phone}
             inputMode="tel"
             onChange={(e) =>
-              onChange({ newProspect: { ...d.newProspect, phone: e.target.value } })
+              onChange({
+                newProspect: { ...d.newProspect, phone: e.target.value },
+              })
             }
             placeholder="Phone (optional)"
             aria-label="Phone"
@@ -590,7 +709,9 @@ function MatchPicker({
           <Input
             value={d.newProspect.area}
             onChange={(e) =>
-              onChange({ newProspect: { ...d.newProspect, area: e.target.value } })
+              onChange({
+                newProspect: { ...d.newProspect, area: e.target.value },
+              })
             }
             placeholder="Area (optional)"
             aria-label="Area"

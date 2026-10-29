@@ -16,8 +16,9 @@ import { cn } from "@/lib/utils"
 import { whatsappUrl } from "@/lib/contact"
 import { clock, longDate, monthName, naira, nairaShort } from "@/lib/format"
 import { STAGE_LABEL, type TodayData } from "@/lib/types"
-import { useMe, useToday } from "@/lib/queries"
+import { useMe, useTasks, useToday } from "@/lib/queries"
 import { GoalCard } from "@/components/goal-card"
+import { QuickAddTask, TaskList } from "@/components/tasks"
 import { ProspectList } from "@/components/prospect-list"
 import { EmptyNote, PageSection } from "@/components/section"
 import { Button } from "@/components/ui/button"
@@ -89,28 +90,28 @@ export default function TodayPage() {
       {data.birthdays.length > 0 && <Birthdays people={data.birthdays} />}
 
       <div className="mt-4 grid gap-2.5 sm:grid-cols-2">
+        <Prompt
+          href="/debrief"
+          icon={IconMicrophone}
+          title="Debrief your day"
+          body="Talk it through; Coverage updates each person for you."
+        />
+        {unrated.length > 0 && (
           <Prompt
-            href="/debrief"
-            icon={IconMicrophone}
-            title="Debrief your day"
-            body="Talk it through; Coverage updates each person for you."
+            href="/triage"
+            icon={IconBolt}
+            title={`Rate ${unrated.length} prospect${unrated.length === 1 ? "" : "s"}`}
+            body="One tap each. Takes a few minutes."
           />
-          {unrated.length > 0 && (
-            <Prompt
-              href="/triage"
-              icon={IconBolt}
-              title={`Rate ${unrated.length} prospect${unrated.length === 1 ? "" : "s"}`}
-              body="One tap each. Takes a few minutes."
-            />
-          )}
-          {noNextStep.length > 0 && (
-            <Prompt
-              href="/triage?mode=plan"
-              icon={IconCalendarPlus}
-              title={`Plan ${noNextStep.length} next step${noNextStep.length === 1 ? "" : "s"}`}
-              body="Rated prospects with nothing scheduled."
-            />
-          )}
+        )}
+        {noNextStep.length > 0 && (
+          <Prompt
+            href="/triage?mode=plan"
+            icon={IconCalendarPlus}
+            title={`Plan ${noNextStep.length} next step${noNextStep.length === 1 ? "" : "s"}`}
+            body="Rated prospects with nothing scheduled."
+          />
+        )}
       </div>
 
       {data.appointments.length > 0 && (
@@ -130,6 +131,8 @@ export default function TodayPage() {
           />
         </PageSection>
       )}
+
+      <TodayTasks today={today} />
 
       {actNow === 0 ? (
         <Empty className="mt-8 rounded-xl border bg-card">
@@ -222,6 +225,31 @@ export default function TodayPage() {
 }
 
 /** Balance against target, and where the current pace lands by the deadline. */
+/** Late and due-today to-dos, next to the day's calls, with a quick add. */
+function TodayTasks({ today }: { today: string }) {
+  const { data } = useTasks("open")
+  if (!data) return null
+  const due = data.filter((t) => t.dueDate && t.dueDate <= today)
+  const later = data.length - due.length
+  return (
+    <PageSection title="To do" count={due.length || undefined} className="mt-8">
+      <QuickAddTask />
+      {due.length > 0 && (
+        <TaskList tasks={due} today={today} className="mt-3" />
+      )}
+      <Link
+        href="/tasks"
+        className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+      >
+        {later
+          ? `${later} more to-do${later === 1 ? "" : "s"} for later`
+          : "All to-dos"}{" "}
+        <IconArrowRight className="size-4" />
+      </Link>
+    </PageSection>
+  )
+}
+
 function PaceCard({ pace }: { pace: TodayData["pace"] }) {
   const pct = pace.target
     ? Math.min(100, (pace.current / pace.target) * 100)

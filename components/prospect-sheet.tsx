@@ -19,6 +19,7 @@ import {
   IconTrash,
   IconUsers,
   IconX,
+  IconCircleCheck,
 } from "@tabler/icons-react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -43,6 +44,7 @@ import {
   STAGE_LABEL,
   TOUCH_LABEL,
   type Activity,
+  type Task,
   type ProspectDetail,
   type Touch,
 } from "@/lib/types"
@@ -61,6 +63,7 @@ import { useMessageDialog } from "@/components/message-dialog"
 import { useTrackCall } from "@/components/call-tracker"
 import { BriefDialog } from "@/components/ai-brief"
 import { BalancesPanel } from "@/components/balances-panel"
+import { ProspectTasks } from "@/components/tasks"
 import {
   ConsentFields,
   DetailsFields,
@@ -302,11 +305,15 @@ function ProspectForm({
             </TabsList>
             <TabsContent value="overview" className="space-y-7 pt-5">
               <Section title="Next step">{nextStep}</Section>
+              <Section title="To do">
+                <ProspectTasks prospect={prospect} today={today} />
+              </Section>
               <Section title="Status">{status}</Section>
             </TabsContent>
             <TabsContent value="activity" className="pt-5">
               <Timeline
                 activities={prospect.activities}
+                tasks={prospect.tasks}
                 prospectId={prospect.id}
               />
             </TabsContent>
@@ -639,13 +646,16 @@ const TOUCH_ICON = {
 
 function Timeline({
   activities,
+  tasks,
   prospectId,
 }: {
   activities: Activity[]
+  tasks: Task[]
   prospectId: string
 }) {
   const removeActivity = useDeleteActivity(prospectId)
-  if (!activities.length)
+  const done = tasks.filter((t) => t.doneAt)
+  if (!activities.length && !done.length)
     return (
       <p className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
         No contact logged yet. Use{" "}
@@ -655,51 +665,73 @@ function Timeline({
     )
   return (
     <ol className="relative space-y-5 before:absolute before:top-2 before:bottom-2 before:left-[15px] before:w-px before:bg-border">
-      {activities.map((a) => {
-        const Icon = TOUCH_ICON[a.type]
-        const isStage = a.type === "STAGE_CHANGE"
-        return (
-          <li key={a.id} className="group relative flex gap-3">
-            <span
-              className={cn(
-                "relative z-10 grid size-8 shrink-0 place-items-center rounded-full border bg-card",
-                isStage ? "text-muted-foreground" : "text-primary"
-              )}
-            >
-              <Icon className="size-4" />
-            </span>
-            <div className="min-w-0 flex-1 pt-1">
-              <p className="text-xs text-muted-foreground">
-                {isStage ? "Stage changed" : TOUCH_LABEL[a.type as Touch]}
-                {a.outcome && ` · ${OUTCOME_LABEL[a.outcome]}`} ·{" "}
-                {niceDate(a.occurredAt.slice(0, 10))}
-              </p>
-              <p
+      {[
+        ...activities.map((a) => ({ at: a.occurredAt, a, t: null })),
+        // Ticked to-dos are part of the story too (documents collected etc.).
+        ...done.map((t) => ({ at: t.doneAt!, a: null, t })),
+      ]
+        .sort((x, y) => y.at.localeCompare(x.at))
+        .map(({ a: entry, t }) => {
+          if (t)
+            return (
+              <li key={t.id} className="relative flex gap-3">
+                <span className="relative z-10 grid size-8 shrink-0 place-items-center rounded-full border bg-card text-success">
+                  <IconCircleCheck className="size-4" />
+                </span>
+                <div className="min-w-0 flex-1 pt-1">
+                  <p className="text-xs text-muted-foreground">
+                    {t.checklist ? "Document collected" : "To-do done"} ·{" "}
+                    {niceDate(t.doneAt!.slice(0, 10))}
+                  </p>
+                  <p className="mt-0.5 text-sm">{t.title}</p>
+                </div>
+              </li>
+            )
+          const a = entry!
+          const Icon = TOUCH_ICON[a.type]
+          const isStage = a.type === "STAGE_CHANGE"
+          return (
+            <li key={a.id} className="group relative flex gap-3">
+              <span
                 className={cn(
-                  "mt-0.5 text-sm",
-                  isStage && "text-muted-foreground"
+                  "relative z-10 grid size-8 shrink-0 place-items-center rounded-full border bg-card",
+                  isStage ? "text-muted-foreground" : "text-primary"
                 )}
               >
-                {isStage
-                  ? `${STAGE_LABEL[a.fromStage!]} → ${STAGE_LABEL[a.toStage!]}`
-                  : a.note || "No note"}
-              </p>
-            </div>
-            {!isStage && (
-              <Button
-                type="button"
-                size="icon-xs"
-                variant="ghost"
-                aria-label="Delete this entry"
-                className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                onClick={() => removeActivity.mutate(a.id)}
-              >
-                <IconTrash />
-              </Button>
-            )}
-          </li>
-        )
-      })}
+                <Icon className="size-4" />
+              </span>
+              <div className="min-w-0 flex-1 pt-1">
+                <p className="text-xs text-muted-foreground">
+                  {isStage ? "Stage changed" : TOUCH_LABEL[a.type as Touch]}
+                  {a.outcome && ` · ${OUTCOME_LABEL[a.outcome]}`} ·{" "}
+                  {niceDate(a.occurredAt.slice(0, 10))}
+                </p>
+                <p
+                  className={cn(
+                    "mt-0.5 text-sm",
+                    isStage && "text-muted-foreground"
+                  )}
+                >
+                  {isStage
+                    ? `${STAGE_LABEL[a.fromStage!]} → ${STAGE_LABEL[a.toStage!]}`
+                    : a.note || "No note"}
+                </p>
+              </div>
+              {!isStage && (
+                <Button
+                  type="button"
+                  size="icon-xs"
+                  variant="ghost"
+                  aria-label="Delete this entry"
+                  className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                  onClick={() => removeActivity.mutate(a.id)}
+                >
+                  <IconTrash />
+                </Button>
+              )}
+            </li>
+          )
+        })}
     </ol>
   )
 }

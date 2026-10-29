@@ -11,6 +11,7 @@ import {
   IconDots,
   IconFileImport,
   IconLayoutKanban,
+  IconListCheck,
   IconMap2,
   IconMessageDots,
   IconMicrophone,
@@ -31,6 +32,7 @@ import {
   useMe,
   useNotificationConfig,
   useProspect,
+  useTasks,
   useToday,
 } from "@/lib/queries"
 import { syncPush } from "@/lib/push"
@@ -63,6 +65,11 @@ function useNav(): NavItem[] {
   const { data } = useToday()
   const due = data ? data.overdue.length + data.dueToday.length : 0
   const toTriage = data ? data.unrated.length + data.noNextStep.length : 0
+  const { data: tasks } = useTasks("open")
+  const today = data?.today
+  const tasksDue = today
+    ? (tasks ?? []).filter((t) => t.dueDate && t.dueDate <= today).length
+    : 0
   return [
     {
       href: "/",
@@ -71,6 +78,14 @@ function useNav(): NavItem[] {
       icon: IconSun,
       badge: due,
       urgent: !!data?.overdue.length,
+    },
+    {
+      href: "/tasks",
+      label: "To do",
+      short: "To do",
+      icon: IconListCheck,
+      badge: tasksDue,
+      urgent: !!today && !!tasks?.some((t) => t.dueDate && t.dueDate < today),
     },
     {
       href: "/prospects",
@@ -466,10 +481,12 @@ function MobileTabBar() {
   const pathname = usePathname()
   const all = useNav()
   const [moreOpen, setMoreOpen] = useState(false)
-  // Triage moves under More on phones; its badge rides along on the More tab.
+  // Triage and Progress move under More on phones; Triage's badge rides
+  // along on the More tab.
   const triage = all.find((n) => n.href === "/triage")!
-  const nav = all.filter((n) => n !== triage)
-  const more = [triage, ...TOOLS, ...MORE_EXTRA]
+  const progress = all.find((n) => n.href === "/progress")!
+  const nav = all.filter((n) => n !== triage && n !== progress)
+  const more = [triage, progress, ...TOOLS, ...MORE_EXTRA]
   const moreActive = more.some((m) => isActive(m.href, pathname))
   return (
     <>

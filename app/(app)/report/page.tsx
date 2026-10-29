@@ -155,6 +155,33 @@ export default function ReportPage() {
           </section>
         </div>
 
+        <section className="mt-6">
+          <h3 className="text-sm font-semibold">
+            To-dos completed: {r.tasksDone}
+          </h3>
+          {r.documentsCollected > 0 && (
+            <p className="mt-1 text-sm text-muted-foreground">
+              Including {r.documentsCollected} account-opening document
+              {r.documentsCollected === 1 ? "" : "s"} collected.
+            </p>
+          )}
+          {r.completed.length > 0 && (
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
+              {r.completed.map((t, i) => (
+                <li key={i}>
+                  {t.title}
+                  {t.prospect && (
+                    <span className="text-muted-foreground">
+                      {" "}
+                      ({t.prospect})
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
         <footer className="mt-8 border-t pt-3 text-xs text-muted-foreground">
           Prepared with Coverage on{" "}
           {longDate(new Date().toLocaleDateString("en-CA"))}.

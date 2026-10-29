@@ -206,7 +206,41 @@ export interface ProspectRef {
   stage?: Stage
 }
 
+export type Repeat = "DAILY" | "WEEKLY" | "MONTHLY"
+
+export const REPEAT_LABEL: Record<Repeat, string> = {
+  DAILY: "Every weekday",
+  WEEKLY: "Every week",
+  MONTHLY: "Every month",
+}
+
+export type ChecklistKind = "INDIVIDUAL" | "BUSINESS"
+
+/** A to-do: general, or about one prospect. */
+export interface Task {
+  id: string
+  title: string
+  dueDate: string | null
+  dueTime: string | null
+  repeat: Repeat | null
+  /** Set on account-opening checklist items. */
+  checklist: ChecklistKind | null
+  prospect: { id: string; name: string; company: string | null } | null
+  doneAt: string | null
+  createdAt: string
+}
+
+export interface TaskInput {
+  title?: string
+  dueDate?: string | null
+  dueTime?: string | null
+  repeat?: Repeat | null
+  prospectId?: string | null
+  done?: boolean
+}
+
 export interface ProspectDetail extends Prospect {
+  tasks: Task[]
   activities: Activity[]
   referredBy: ProspectRef | null
   referrals: ProspectRef[]
@@ -465,6 +499,9 @@ export interface WeeklyReport {
     stage: Stage
     potential: number
   }[]
+  tasksDone: number
+  documentsCollected: number
+  completed: { title: string; prospect: string | null }[]
 }
 
 export interface Brief {
@@ -536,6 +573,8 @@ export interface DebriefSuggestion {
   nextAction: string
   nextDate: string | null
   nextTime: string | null
+  /** Suggested to-dos for this person. */
+  tasks?: SuggestedTask[]
   check: string[]
 }
 
@@ -553,7 +592,12 @@ export interface Debrief {
   /** While PROCESSING */
   step: "TRANSCRIBING" | "READING" | null
   transcript: string | null
-  result: { items: DebriefSuggestion[]; other: string[] } | null
+  result: {
+    items: DebriefSuggestion[]
+    /** Suggested general to-dos. */
+    tasks?: SuggestedTask[]
+    other: string[]
+  } | null
   applied: DebriefApplied[] | null
   /** Saved debriefs can be undone until this time. */
   undoUntil: string | null
@@ -592,4 +636,11 @@ export interface DebriefApplyItem {
   nextAction?: string
   nextDate?: string
   nextTime?: string
+  tasks?: SuggestedTask[]
+}
+
+export interface SuggestedTask {
+  title: string
+  dueDate?: string | null
+  dueTime?: string | null
 }
