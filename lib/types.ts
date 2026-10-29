@@ -330,6 +330,34 @@ export interface TodayData {
   stale: (Prospect & { daysInStage: number; staleAfter: number })[]
   staleCount: number
   birthdays: (Prospect & { inDays: number })[]
+  /** Missing on copies cached before customer care. */
+  balanceDrops?: BalanceDrop[]
+  care?: {
+    drops: number
+    checkIns: number
+    referralAsks: number
+    crossSell: number
+  }
+}
+
+type Customer = Prospect & { referrals: number }
+
+export interface BalanceDrop {
+  prospectId: string
+  /** YYYY-MM of the lower balance. */
+  month: string
+  from: number
+  to: number
+  drop: number
+  prospect: Customer
+}
+
+export interface CustomersData {
+  today: string
+  drops: BalanceDrop[]
+  checkIns: (Customer & { daysSinceContact: number; careDays: number })[]
+  referralAsks: (Customer & { fundedDays: number })[]
+  crossSell: { product: Product; reason: string; prospect: Customer }[]
 }
 
 export interface StageForecast {

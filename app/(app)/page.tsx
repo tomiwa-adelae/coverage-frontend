@@ -8,6 +8,7 @@ import {
   IconCake,
   IconCalendarPlus,
   IconChecks,
+  IconHeartHandshake,
   IconMicrophone,
   IconTrendingDown,
   IconTrendingUp,
@@ -53,6 +54,14 @@ export default function TodayPage() {
   if (!data) return <TodaySkeleton />
 
   const { today, overdue, focus, noNextStep, upcoming, unrated, stale } = data
+  const care = data.care
+  const careCount = care ? care.checkIns + care.referralAsks : 0
+  const careSummary = [
+    care?.checkIns && `${care.checkIns} due a check-in`,
+    care?.referralAsks && `${care.referralAsks} to ask for referrals`,
+  ]
+    .filter(Boolean)
+    .join(", ")
   const actNow = focus.length
   const firstName = me?.name.split(" ")[0]
 
@@ -88,6 +97,7 @@ export default function TodayPage() {
       <PaceCard pace={data.pace} />
 
       {data.birthdays.length > 0 && <Birthdays people={data.birthdays} />}
+      {!!data.balanceDrops?.length && <Drops drops={data.balanceDrops} />}
 
       <div className="mt-4 grid gap-2.5 sm:grid-cols-2">
         <Prompt
@@ -96,6 +106,14 @@ export default function TodayPage() {
           title="Debrief your day"
           body="Talk it through; Coverage updates each person for you."
         />
+        {careCount > 0 && (
+          <Prompt
+            href="/customers"
+            icon={IconHeartHandshake}
+            title="Look after your customers"
+            body={careSummary}
+          />
+        )}
         {unrated.length > 0 && (
           <Prompt
             href="/triage"
@@ -307,6 +325,39 @@ function PaceCard({ pace }: { pace: TodayData["pace"] }) {
         </span>
       </p>
     </Link>
+  )
+}
+
+function Drops({ drops }: { drops: NonNullable<TodayData["balanceDrops"]> }) {
+  const open = useOpenProspect()
+  return (
+    <div className="mt-4 rounded-xl border border-destructive/30 bg-destructive/5 p-3.5">
+      <p className="flex items-center gap-2 text-sm font-semibold">
+        <IconTrendingDown className="size-4" /> Balances down
+      </p>
+      <ul className="mt-2 space-y-1.5">
+        {drops.map((d) => (
+          <li key={d.prospectId} className="text-sm">
+            <button
+              type="button"
+              className="w-full truncate text-left hover:underline"
+              onClick={() => open(d.prospectId)}
+            >
+              <span className="font-medium">{d.prospect.name}</span>{" "}
+              <span className="text-muted-foreground tabular-nums">
+                {nairaShort(d.from)} → {nairaShort(d.to)}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      <Link
+        href="/customers"
+        className="mt-2 inline-block text-xs font-medium text-primary hover:underline"
+      >
+        See all customer care
+      </Link>
+    </div>
   )
 }
 

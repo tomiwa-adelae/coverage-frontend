@@ -16,6 +16,7 @@ import type {
   Cadence,
   CadenceStep,
   CardScan,
+  CustomersData,
   Debrief,
   DebriefApplyItem,
   DebriefSummary,
@@ -52,6 +53,25 @@ export interface ProspectFilters {
 
 export const useMe = () =>
   useQuery({ queryKey: ["me"], queryFn: () => api<Me>("/users/me") })
+
+export const useCustomers = () =>
+  useQuery({
+    queryKey: ["dashboard", "customers"],
+    queryFn: () => api<CustomersData>("/dashboard/customers"),
+  })
+
+export function useReferralAsked() {
+  const invalidate = useInvalidateAll()
+  return useMutation({
+    mutationFn: ({ id, asked }: { id: string; asked: boolean }) =>
+      api<Prospect>(`/prospects/${id}/referral-asked`, {
+        method: "POST",
+        body: { asked },
+      }),
+    onSuccess: invalidate,
+    onError,
+  })
+}
 
 export const useToday = () =>
   useQuery({

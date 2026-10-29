@@ -17,6 +17,7 @@ import {
   IconMessageDots,
   IconMicrophone,
   IconPlus,
+  IconHeartHandshake,
   IconReportAnalytics,
   IconRoute,
   IconSearch,
@@ -122,6 +123,12 @@ const TOOLS: NavItem[] = [
     label: "Debrief",
     short: "Debrief",
     icon: IconMicrophone,
+  },
+  {
+    href: "/customers",
+    label: "Customer care",
+    short: "Customers",
+    icon: IconHeartHandshake,
   },
   { href: "/balances", label: "Balances", short: "Balances", icon: IconCash },
   {

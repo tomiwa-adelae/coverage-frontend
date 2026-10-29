@@ -14,6 +14,7 @@ import {
   IconCash,
   IconChartBar,
   IconFileImport,
+  IconHeartHandshake,
   IconLayoutKanban,
   IconMap2,
   IconMessageDots,
@@ -82,6 +83,12 @@ export const PAGES: {
     label: "Progress",
     icon: IconChartBar,
     keywords: "target forecast",
+  },
+  {
+    href: "/customers",
+    label: "Customer care",
+    icon: IconHeartHandshake,
+    keywords: "funded check-in referral cross-sell balance drop",
   },
   {
     href: "/balances",

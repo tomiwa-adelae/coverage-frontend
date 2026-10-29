@@ -2,7 +2,7 @@ import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persist
 import type { Query } from "@tanstack/react-query"
 
 /** Bump when cached shapes change so old caches are dropped instead of misread. */
-export const CACHE_BUSTER = "2026-10-rm-toolkit"
+export const CACHE_BUSTER = "2026-10-customer-care"
 export const CACHE_KEY = "coverage.cache"
 /** How long a saved copy is good for when offline. */
 export const CACHE_MAX_AGE = 24 * 60 * 60_000
