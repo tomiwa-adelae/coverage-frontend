@@ -6,7 +6,9 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { IconRoute, IconSparkles } from "@tabler/icons-react"
 import { toast } from "sonner"
 import { z } from "zod"
-import { followUpDays } from "@/lib/contact"
+import { careDays, followUpDays } from "@/lib/contact"
+import { sendOrQueue } from "@/lib/offline-queue"
+import { useQueryClient } from "@tanstack/react-query"
 import { addDays, clock, localToday, niceDate } from "@/lib/format"
 import { planProgress } from "@/lib/plans"
 import {
@@ -112,6 +114,7 @@ function QuickLogForm({
   onDone: () => void
 }) {
   const today = localToday()
+  const qc = useQueryClient()
   const log = useQuickLog()
   const tidy = useTidyNote()
   const { data: ai } = useAiStatus()
@@ -128,7 +131,12 @@ function QuickLogForm({
       : plan?.next
         ? { nextDate: plan.next.nextDate, nextAction: plan.next.nextAction }
         : {
-            nextDate: addDays(today, followUpDays(prospect.tier)),
+            nextDate: addDays(
+              today,
+              prospect.stage === "FUNDED"
+                ? careDays(prospect.tier)
+                : followUpDays(prospect.tier)
+            ),
             nextAction: prospect.nextAction ?? "",
           }
 
@@ -184,16 +192,20 @@ function QuickLogForm({
   async function submit(values: QuickLogValues) {
     dictation.stop()
     try {
-      await log.mutateAsync({
+      const how = await sendOrQueue(qc, log.mutateAsync, {
         id: prospect.id,
         ...values,
         outcome: values.outcome || undefined,
         note: values.note || undefined,
         nextTime: values.nextTime || undefined,
+        clientId: crypto.randomUUID(),
       })
-      toast.success(`Logged for ${prospect.name}`, {
-        description: `Next follow-up ${niceDate(values.nextDate)}${values.nextTime ? ` at ${clock(values.nextTime)}` : ""}`,
-      })
+      const next = `Next follow-up ${niceDate(values.nextDate)}${values.nextTime ? ` at ${clock(values.nextTime)}` : ""}`
+      if (how === "queued")
+        toast.info(`Saved on this phone for ${prospect.name}`, {
+          description: `No connection, so it’ll send when you’re back online. ${next}`,
+        })
+      else toast.success(`Logged for ${prospect.name}`, { description: next })
       onDone()
     } catch (e) {
       showFormError(form, e)

@@ -192,20 +192,20 @@ export function QuickAddTask({
     e.preventDefault()
     if (!title.trim()) return
     dictation.stop()
+    const draft = text
+    // Cleared at once; it shows in the list even with no signal.
+    setText("")
+    setDropped(new Set())
     create.mutate(
       {
+        id: crypto.randomUUID(),
         title: title.trim(),
         dueDate,
         dueTime: dueDate && keep("time") ? parsed.dueTime : null,
         repeat: dueDate && keep("repeat") ? parsed.repeat : null,
         prospectId: who?.id ?? null,
       },
-      {
-        onSuccess: () => {
-          setText("")
-          setDropped(new Set())
-        },
-      }
+      { onError: () => setText((cur) => cur || draft) }
     )
   }
 

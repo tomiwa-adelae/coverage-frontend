@@ -8,6 +8,7 @@ import {
 } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { api } from "./api"
+import { sendCreateTask, sendQuickLog, sendUpdateTask } from "./offline-queue"
 import type {
   AuditEntry,
   BalanceSheet,
@@ -20,6 +21,7 @@ import type {
   DebriefSummary,
   Draft,
   Me,
+  NewTask,
   Outcome,
   ProgressData,
   Prospect,
@@ -31,7 +33,6 @@ import type {
   ChecklistKind,
   SuggestedTask,
   Task,
-  TaskInput,
   Team,
   TemplateInput,
   TidiedNote,
@@ -128,26 +129,52 @@ function useInvalidateTasks() {
   }
 }
 
+/** Queued on the phone when offline; refreshing is set up in offline-queue. */
 export function useCreateTask() {
-  const invalidate = useInvalidateTasks()
+  const qc = useQueryClient()
   return useMutation({
-    mutationFn: (body: TaskInput & { title: string }) =>
-      api<Task>("/tasks", { method: "POST", body }),
-    onSuccess: invalidate,
-    onError,
+    mutationKey: ["createTask"],
+    mutationFn: sendCreateTask,
+    // With an id it shows in the open list straight away, signal or not.
+    onMutate: async (t: NewTask) => {
+      if (!t.id) return
+      await qc.cancelQueries({ queryKey: ["tasks", "open"] })
+      const p = t.prospectId
+        ? qc
+            .getQueriesData<Prospect[]>({ queryKey: ["prospects", "list"] })
+            .flatMap(([, list]) => (Array.isArray(list) ? list : []))
+            .find((x) => x.id === t.prospectId)
+        : null
+      const shown: Task = {
+        id: t.id,
+        title: t.title,
+        dueDate: t.dueDate ?? null,
+        dueTime: t.dueTime ?? null,
+        repeat: t.repeat ?? null,
+        checklist: null,
+        prospect: p
+          ? { id: p.id, name: p.name, company: p.company ?? null }
+          : null,
+        doneAt: null,
+        createdAt: new Date().toISOString(),
+      }
+      qc.setQueryData<Task[]>(["tasks", "open"], (list) =>
+        list ? [...list, shown] : list
+      )
+    },
+    onError: (e) => {
+      qc.invalidateQueries({ queryKey: ["tasks"] })
+      onError(e)
+    },
   })
 }
 
 /** Ticks show straight away; the server catches up behind. */
 export function useUpdateTask() {
   const qc = useQueryClient()
-  const invalidate = useInvalidateTasks()
   return useMutation({
-    mutationFn: ({ id, ...body }: TaskInput & { id: string }) =>
-      api<Task & { next: Task | null }>(`/tasks/${id}`, {
-        method: "PATCH",
-        body,
-      }),
+    mutationKey: ["updateTask"],
+    mutationFn: sendUpdateTask,
     onMutate: async ({ id, done }) => {
       if (done === undefined) return
       await qc.cancelQueries({ queryKey: ["tasks"] })
@@ -166,7 +193,6 @@ export function useUpdateTask() {
             : p
       )
     },
-    onSettled: invalidate,
     onError,
   })
 }
@@ -230,18 +256,18 @@ export interface QuickLogInput {
   nextDate?: string
   nextTime?: string | null
   nextAction?: string
+  /** Made on the phone so a log sent twice is saved once. */
+  clientId?: string
 }
 
-/** Log a contact and set the follow-up in one call. Callers show errors. */
+/**
+ * Log a contact and set the follow-up in one call. Queued on the phone when
+ * offline (see offline-queue). Callers show errors.
+ */
 export function useQuickLog() {
-  const invalidate = useInvalidateAll()
   return useMutation({
-    mutationFn: ({ id, ...body }: QuickLogInput) =>
-      api<ProspectDetail>(`/prospects/${id}/activities`, {
-        method: "POST",
-        body,
-      }),
-    onSuccess: invalidate,
+    mutationKey: ["quickLog"],
+    mutationFn: sendQuickLog,
   })
 }
 

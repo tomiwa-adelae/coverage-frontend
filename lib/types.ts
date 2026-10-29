@@ -239,6 +239,14 @@ export interface TaskInput {
   done?: boolean
 }
 
+export interface NewTask extends TaskInput {
+  title: string
+  /** Made on the phone so it shows at once and is saved once. */
+  id?: string
+  /** What suggested it, e.g. "cross-sell:<prospect>:POS". */
+  source?: string
+}
+
 export interface ProspectDetail extends Prospect {
   tasks: Task[]
   activities: Activity[]

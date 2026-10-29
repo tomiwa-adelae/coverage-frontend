@@ -1,5 +1,6 @@
 "use client"
 
+import { PendingSync } from "@/components/pending-sync"
 import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
@@ -241,6 +242,7 @@ function Shell({ children }: { children: React.ReactNode }) {
                       !fullWidth && "max-w-3xl"
                     )}
                   >
+                    <PendingSync />
                     {children}
                   </main>
                 </div>
